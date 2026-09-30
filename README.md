@@ -59,7 +59,7 @@ browser over server-sent events. The standalone Wasm distribution runs the
 same simulation core entirely in the browser and is written to
 `web/build/dist/wasmJs/productionExecutable`.
 
-### React topology client (in development)
+### React topology client
 
 The interactive React Flow client lives in `web-client`. Start the JVM web
 server, then run the Vite development server in another terminal:
@@ -71,13 +71,32 @@ nix develop --command npm ci
 nix develop --command npm run dev
 ```
 
-Open `http://127.0.0.1:5173/`. Vite proxies `/api` to the JVM server. Run its
-tests and production build with:
+Open `http://127.0.0.1:5173/?runtime=server`. Vite proxies `/api` to the JVM
+server. This mode shares one simulation among connected browsers. Run its tests
+and production build with:
 
 ```sh
 nix develop --command npm test
 nix develop --command npm run build
 ```
+
+For a fully static, single-user build that needs no JVM at runtime:
+
+```sh
+cd web-client
+nix develop --command npm ci
+nix develop --command npm run build:static
+```
+
+The result in `web-client/dist` contains both the React client and the Kotlin/Wasm
+simulation. Serve that directory with any static file server. Its default mode
+is browser-local; append `?runtime=server` only when it is hosted alongside the
+NSDL HTTP service. Browser-local topology state lives in that page session and
+is not shared with other users.
+
+Pushes to `master` run `.github/workflows/pages.yml`, test the client, build the
+static site, and deploy it to GitHub Pages. In the repository's Pages settings,
+select **GitHub Actions** as the source before the first deployment.
 
 ## Documentation
 
