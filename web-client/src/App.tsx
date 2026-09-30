@@ -14,6 +14,7 @@ import {
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddObjectDialog } from "./AddObjectDialog";
 import { NetworkNode } from "./NetworkNode";
+import { inspectionIds } from "./inspector";
 import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
 import { selectTransport, type SimulationTransport } from "./transport";
@@ -33,7 +34,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
-  const pinnedInspection = useRef(false);
+  const pinnedInspection = useRef<{ kind: "node" | "edge"; id: string } | null>(null);
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
 
@@ -42,6 +43,12 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const result = await transport.execute(op, { id: snapshot.id });
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
     setLog((entries) => [...entries.slice(-99), result.ok ? `${op} ${snapshot.id}` : `${op} ${snapshot.id}: ${result.error.message}`]);
+  }, [transport]);
+
+  const loadNodeInspection = useCallback(async (snapshot: ObjectSnapshot) => {
+    const results = await Promise.all(inspectionIds(snapshot).map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
+    if (pinnedInspection.current?.kind === "node" && pinnedInspection.current.id !== snapshot.id) return;
+    setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
   }, [transport]);
 
   const refresh = useCallback(async () => {
@@ -61,9 +68,17 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     if (transitions.length) setLog((entries) => [...entries.slice(-99), ...transitions]);
     setNodes(projected.nodes);
     setEdges(projected.edges);
+    const pinned = pinnedInspection.current;
+    if (pinned?.kind === "node") {
+      const node = projected.nodes.find((candidate) => candidate.id === pinned.id);
+      if (node) void loadNodeInspection(node.data.snapshot);
+    } else if (pinned?.kind === "edge") {
+      const edge = projected.edges.find((candidate) => candidate.id === pinned.id);
+      setInspected(edge?.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []);
+    }
     setStatus(`revision ${result.revision}`);
     return result.revision;
-  }, [setEdges, setNodes, togglePower, transport]);
+  }, [loadNodeInspection, setEdges, setNodes, togglePower, transport]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -99,12 +114,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setLog((entries) => [...entries.slice(-99), result.ok ? `disconnected ${edge.id}` : `disconnect failed: ${result.error.message}`]);
     await refresh();
   }, [refresh, transport]);
-
-  const inspectNode = useCallback(async (node: NetworkNodeType) => {
-    const ids = [node.id, ...(node.data.snapshot.relations.interfaces ?? []), ...(node.data.snapshot.relations.services ?? [])];
-    const results = await Promise.all(ids.map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
-    setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
-  }, [transport]);
 
   const createObject = useCallback(async (type: ObjectTypeSchema, id: string, props: Record<string, string>) => {
     const cleaned = Object.fromEntries(Object.entries(props).filter(([, value]) => value !== ""));
@@ -149,18 +158,18 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgesChange={onEdgesChange}
           onEdgesDelete={(deleted) => { deleted.forEach((edge) => { void disconnect(edge); }); }}
           onEdgeDoubleClick={(_event, edge) => { void disconnect(edge); }}
-          onEdgeClick={(_event, edge) => { pinnedInspection.current = true; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
+          onEdgeClick={(_event, edge) => { pinnedInspection.current = { kind: "edge", id: edge.id }; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
-          onNodeClick={(_event, node) => { pinnedInspection.current = true; void inspectNode(node); }}
-          onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void inspectNode(node); }}
+          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); }}
+          onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onNodeDragStop={(_event, node) => setPosition(node.id, node.position)}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
-          onPaneClick={() => { pinnedInspection.current = false; setInspected([]); }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />
