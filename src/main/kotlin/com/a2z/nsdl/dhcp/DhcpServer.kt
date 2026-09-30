@@ -10,7 +10,9 @@ import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.ObjectSnapshot
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
+import com.a2z.nsdl.sim.Cancellable
 import com.a2z.nsdl.sim.WorkScope
+import kotlin.time.Duration.Companion.seconds
 
 data class DhcpPool(
     val start: Ipv4Address,
@@ -29,6 +31,8 @@ data class DhcpPool(
  * - REQUEST naming this server: ACK if the requested address is the one offered/leased to that chaddr, else NAK.
  * - REQUEST naming another server: withdraw the pending offer.
  * - REQUEST without a server identifier (INIT-REBOOT/RENEWING), DECLINE, RELEASE, INFORM: ignored (deferred).
+ * - A BOUND lease is reclaimed after [DhcpPool.leaseSeconds] of no contact; any REQUEST that refreshes it
+ *   (the initial REQUEST, a unicast renewal, or a rebind) restarts that deadline from when it arrives.
  * Offers and leases are volatile: cleared when the hosting device stops.
  */
 class DhcpServer(
@@ -41,16 +45,24 @@ class DhcpServer(
     private data class Binding(val address: Ipv4Address, val state: BindingState)
 
     private val bindings = linkedMapOf<MacAddress, Binding>()
+    private val expiryTimers = mutableMapOf<MacAddress, Cancellable>()
+    private var scope: WorkScope? = null
     private var active = false
 
     init {
         transport.bind(DhcpMessage.SERVER_PORT) { onDatagram(it) }
     }
 
-    override fun start(scope: WorkScope) { active = true }
+    override fun start(scope: WorkScope) {
+        this.scope = scope
+        active = true
+    }
 
     override fun stop() {
         active = false
+        scope = null
+        expiryTimers.values.forEach { it.cancel() }
+        expiryTimers.clear()
         bindings.clear()
     }
 
@@ -80,6 +92,7 @@ class DhcpServer(
         val binding = bindings[msg.chaddr]
         if (binding != null && msg.requestedIp == binding.address) {
             setBinding(msg.chaddr, binding.copy(state = BindingState.BOUND))
+            scheduleExpiry(msg.chaddr)
             reply(msg, DhcpMessageType.ACK, self, binding.address)
         } else {
             reply(msg, DhcpMessageType.NAK, self, Ipv4Address.ANY)
@@ -92,6 +105,18 @@ class DhcpServer(
             bindings -= mac
             events.emit(id, EventPayload.ProtocolStateChanged(PROTOCOL, "OFFERED", "NONE", "client=$mac chose another server"))
         }
+    }
+
+    /** (Re)schedules reclamation of [mac]'s lease, restarting its deadline from now. */
+    private fun scheduleExpiry(mac: MacAddress) {
+        expiryTimers.remove(mac)?.cancel()
+        expiryTimers[mac] = scope?.schedule(pool.leaseSeconds.seconds) { onExpire(mac) } ?: return
+    }
+
+    private fun onExpire(mac: MacAddress) {
+        expiryTimers.remove(mac)
+        val binding = bindings.remove(mac) ?: return
+        events.emit(id, EventPayload.ProtocolStateChanged(PROTOCOL, binding.state.name, "NONE", "client=$mac address=${binding.address} lease expired"))
     }
 
     private fun freeAddress(): Ipv4Address? {

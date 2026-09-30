@@ -4,6 +4,7 @@ import com.a2z.nsdl.ip.Ipv4Stack
 import com.a2z.nsdl.link.Cable
 import com.a2z.nsdl.link.EthernetInterface
 import com.a2z.nsdl.link.LinkProfile
+import com.a2z.nsdl.model.EventPayload.ProtocolStateChanged
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.net.ConfigSource
 import com.a2z.nsdl.net.Ipv4Address
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 class DhcpServerTest {
     private val scheduler = VirtualScheduler()
@@ -103,5 +105,73 @@ class DhcpServerTest {
         server.stop()
         send(DhcpMessageType.DISCOVER)
         assertTrue(replies.isEmpty())
+    }
+
+    // -- Lease expiry: reclaiming an address after no contact --
+
+    private fun leases(): List<Map<String, Any?>> {
+        @Suppress("UNCHECKED_CAST")
+        return server.snapshot().state["leases"] as List<Map<String, Any?>>
+    }
+
+    private fun bind() {
+        send(DhcpMessageType.DISCOVER)
+        send(DhcpMessageType.REQUEST, requested = replies.last().yiaddr, serverId = serverIp)
+    }
+
+    @Test
+    fun `a lease is untouched well before it expires`() {
+        bind()
+        scheduler.advanceBy(300.seconds) // well short of the 600s lease
+
+        assertEquals(1, leases().size)
+    }
+
+    @Test
+    fun `an unrenewed lease is reclaimed at expiry, freeing the address for reuse`() {
+        bind()
+        scheduler.advanceBy(600.seconds) // leaseSeconds, with no further contact
+
+        assertEquals(emptyList<Any>(), leases())
+
+        send(DhcpMessageType.DISCOVER, mac = MacAddress.local(20))
+        assertEquals(Ipv4Address.parse("10.0.0.100"), replies.last().yiaddr, "the reclaimed address is offered again")
+    }
+
+    @Test
+    fun `expiry emits a state transition from BOUND to NONE`() {
+        bind()
+        sink.clear()
+
+        scheduler.advanceBy(600.seconds)
+
+        assertEquals(listOf("BOUND>NONE"), sink.of<ProtocolStateChanged>(server.id).map { "${it.from}>${it.to}" })
+    }
+
+    @Test
+    fun `a renewal REQUEST before expiry resets the lease's deadline`() {
+        bind()
+
+        scheduler.advanceBy(500.seconds) // renew comfortably before the original 600s deadline
+        send(DhcpMessageType.REQUEST, requested = Ipv4Address.parse("10.0.0.100"), serverId = serverIp)
+
+        scheduler.advanceBy(500.seconds) // 1000s total: past the original deadline, short of the renewed one
+        assertEquals(1, leases().size, "renewal pushed the deadline out, so the original 600s mark no longer applies")
+
+        scheduler.advanceBy(100.seconds) // 1100s total: past the renewed deadline (500 + 600)
+        assertEquals(emptyList<Any>(), leases())
+    }
+
+    @Test
+    fun `stopping the server cancels its pending expiry timers, so a stale one cannot evict a later lease`() {
+        bind()
+        server.stop()
+
+        scheduler.advanceBy(50.seconds)
+        server.start(WorkScope(scheduler))
+        bind()
+
+        scheduler.advanceBy(590.seconds) // ~640s since the very first bind: past its stale 600s deadline, short of the fresh one
+        assertEquals(1, leases().size, "the fresh lease survives past the stale timer's original deadline")
     }
 }
