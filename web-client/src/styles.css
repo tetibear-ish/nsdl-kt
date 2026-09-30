@@ -40,6 +40,9 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .dhcp-lease dd { margin: 0; color: #dce9f6; font: 12px ui-monospace, monospace; }
 .inspector details { margin-top: 4px; }
 .inspector summary { cursor: pointer; color: #718ba2; font-size: 12px; }
+.dhcp-leases { width: 100%; margin: 0 0 12px; border-collapse: collapse; font-size: 12px; }
+.dhcp-leases th { padding: 3px 8px 3px 0; color: #718ba2; text-align: left; font-weight: 400; }
+.dhcp-leases td { padding: 3px 8px 3px 0; color: #dce9f6; font: 12px ui-monospace, monospace; border-top: 1px solid #1c3349; }
 @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 180px; } .inspector { border-top: 1px solid #29445f; border-left: 0; } }
 .react-flow { background: transparent; }
 .network-node { position: relative; display: grid; min-width: 172px; padding: 17px 24px; border: 2px solid #587087; border-radius: 14px; background: #10253a; box-shadow: 0 14px 30px rgba(0,0,0,.3); text-align: center; }
@@ -48,6 +51,8 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
 .network-node .node-dhcp { display: block; color: #718ba2; font-weight: 400; letter-spacing: normal; }
+.network-node .node-dhcp-leases { margin-top: 8px; width: 100%; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
+.network-node .node-dhcp-leases td { padding: 1px 4px 1px 0; border-top: 1px solid #1c3349; white-space: nowrap; }
 .network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
 .network-node.power-booting { border-color: #ffc96b; }
 .node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }

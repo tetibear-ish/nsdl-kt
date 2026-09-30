@@ -19,6 +19,7 @@ import { useActivityStore } from "./activityStore";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
 import { useClockTimeStore } from "./clockStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
+import { DhcpServerPanel } from "./DhcpServerPanel";
 import { NetworkNode } from "./NetworkNode";
 import { inspectionIds } from "./inspector";
 import {
@@ -74,27 +75,32 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
   }, [transport]);
 
+  const fetchDeviceServices = useCallback(async (devices: ObjectSnapshot[], suffix: string) => {
+    const services = devices.flatMap((snapshot) =>
+      (snapshot.relations.services ?? [])
+        .filter((serviceId) => serviceId.endsWith(suffix))
+        .map((serviceId) => ({ deviceId: snapshot.id, serviceId })),
+    );
+    const results = await Promise.all(services.map(({ serviceId }) => transport.execute<ObjectSnapshot>("inspect", { id: serviceId })));
+    return Object.fromEntries(
+      services.flatMap(({ deviceId }, index) => {
+        const result = results[index];
+        return result.ok ? [[deviceId, result.data] as const] : [];
+      }),
+    );
+  }, [transport]);
+
   const refresh = useCallback(async () => {
     const result = await transport.listObjects();
     if (!result.ok) {
       setStatus(`${result.error.code}: ${result.error.message}`);
       return 0;
     }
-    const dhcpServices = result.data.flatMap((snapshot) =>
-      (snapshot.relations.services ?? [])
-        .filter((serviceId) => serviceId.endsWith(".dhcp-client"))
-        .map((serviceId) => ({ deviceId: snapshot.id, serviceId })),
-    );
-    const dhcpResults = await Promise.all(
-      dhcpServices.map(({ serviceId }) => transport.execute<ObjectSnapshot>("inspect", { id: serviceId })),
-    );
-    const dhcpLeases = Object.fromEntries(
-      dhcpServices.flatMap(({ deviceId }, index) => {
-        const leaseResult = dhcpResults[index];
-        return leaseResult.ok ? [[deviceId, leaseResult.data] as const] : [];
-      }),
-    );
-    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); }, dhcpLeases);
+    const [dhcpLeases, dhcpServers] = await Promise.all([
+      fetchDeviceServices(result.data, ".dhcp-client"),
+      fetchDeviceServices(result.data, ".dhcp-server"),
+    ]);
+    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); }, dhcpLeases, dhcpServers);
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
       const before = powerStates.current[node.id];
@@ -115,7 +121,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     }
     setStatus(`revision ${result.revision}`);
     return result.revision;
-  }, [loadNodeInspection, setEdges, setNodes, togglePower, transport]);
+  }, [fetchDeviceServices, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -411,9 +417,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           : inspected.map((snapshot) => (
             <section key={snapshot.id}>
               <h3>{snapshot.id}</h3>
-              {snapshot.type === "dhcp-client"
-                ? <DhcpLeasePanel snapshot={snapshot} nowMs={clock.nowMs} />
-                : <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>}
+              {snapshot.type === "dhcp-client" && <DhcpLeasePanel snapshot={snapshot} nowMs={clock.nowMs} />}
+              {snapshot.type === "dhcp-server" && <DhcpServerPanel snapshot={snapshot} nowMs={clock.nowMs} />}
+              {snapshot.type !== "dhcp-client" && snapshot.type !== "dhcp-server" &&
+                <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>}
             </section>
           ))}
         {inspected[0]?.kind === "CABLE" && <>

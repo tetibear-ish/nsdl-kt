@@ -69,4 +69,18 @@ describe("projectTopology", () => {
 
     expect(projected.nodes[0].data.dhcpLease).toBeUndefined();
   });
+
+  it("attaches a device's dhcp server snapshot to its node data when provided", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "gateway1", type: "gateway", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["gateway1.eth0"] } },
+    ];
+    const server: ObjectSnapshot = {
+      id: "gateway1.dhcp-server", type: "dhcp-server", kind: "PROTOCOL",
+      state: { leases: [] }, relations: {},
+    };
+
+    const projected = projectTopology(snapshots, {}, undefined, {}, { gateway1: server });
+
+    expect(projected.nodes[0].data.dhcpServer).toBe(server);
+  });
 });

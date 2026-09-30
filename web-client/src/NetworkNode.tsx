@@ -3,6 +3,7 @@ import { useActivityStore } from "./activityStore";
 import { formatVirtualTime } from "./clock";
 import { useClockTimeStore } from "./clockStore";
 import { parseDhcpLease } from "./dhcpLease";
+import { parseDhcpServerLeases } from "./dhcpServerLeases";
 import type { NetworkNode as NetworkNodeType } from "./topology";
 
 export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
@@ -11,6 +12,7 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
   const pulses = useActivityStore((state) => state.pulses);
   const nowMs = useClockTimeStore((state) => state.nowMs);
   const lease = data.dhcpLease ? parseDhcpLease(data.dhcpLease, nowMs) : null;
+  const leases = data.dhcpServer ? parseDhcpServerLeases(data.dhcpServer, nowMs) : [];
 
   return (
     <article className={`network-node power-${power.toLowerCase()}`} aria-label={`${data.snapshot.id} ${power}`}>
@@ -23,6 +25,19 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
           {lease.address}
           {lease.remainingMs !== null && ` · ${formatVirtualTime(lease.remainingMs)}`}
         </small>
+      )}
+      {leases.length > 0 && (
+        <table className="node-dhcp-leases nodrag nopan">
+          <tbody>
+            {leases.map((row) => (
+              <tr key={row.mac}>
+                <td>{row.address}</td>
+                <td>{row.mac}</td>
+                <td>{row.remainingMs !== null ? formatVirtualTime(row.remainingMs) : "—"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       )}
       <button
         className="node-power nodrag nopan"
