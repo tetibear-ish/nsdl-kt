@@ -35,7 +35,7 @@ object PrinterType : ObjectType {
         val dhcpClient = DhcpClient(clientId, eth0, eth0, ctx.random(clientId), ctx.events)
         builder.service(dhcpClient)
 
-        val bootMs = props["bootMs"] as Long
+        var bootMs = props["bootMs"] as Long
         val device = builder.build(bootDuration = { bootMs.milliseconds })
 
         return SimObject(
@@ -43,6 +43,7 @@ object PrinterType : ObjectType {
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
+            configure = { name, value -> if (name == "bootMs") bootMs = value as Long },
         )
     }
 }

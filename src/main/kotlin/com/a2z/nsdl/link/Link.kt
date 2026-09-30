@@ -6,7 +6,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 
 /** Physical connector/medium family. Endpoints connect only through a cable of the same media type. */
-enum class MediaType { TWISTED_PAIR }
+enum class MediaType { TWISTED_PAIR, FIBER }
 
 /** Why a cable connection cannot be made. */
 enum class ConnectionProblem { ALREADY_CONNECTED, SELF_CONNECTION, INCOMPATIBLE_MEDIA, ENDPOINT_OCCUPIED }

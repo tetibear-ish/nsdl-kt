@@ -45,7 +45,8 @@ fun validateProperties(schema: List<PropertySpec>, input: Map<String, Any?>): Pr
     return PropertyValidation(result, errors)
 }
 
-private fun coerce(type: PropertyType, value: Any): Any? = when (type) {
+/** Also used by SimulationService to coerce individual Configure values against a PropertySpec's type. */
+internal fun coerce(type: PropertyType, value: Any): Any? = when (type) {
     PropertyType.STRING -> value as? String
     PropertyType.LONG -> when (value) {
         is Long -> value
