@@ -30,6 +30,8 @@ jobs:
           cache: npm
           cache-dependency-path: web-client/package-lock.json
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
       - run: npm ci
         working-directory: web-client
       - run: npm test
