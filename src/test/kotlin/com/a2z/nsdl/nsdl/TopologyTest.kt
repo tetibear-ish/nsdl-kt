@@ -27,7 +27,7 @@ class TopologyTest {
 
     private fun validTopology() = topology {
         create("printer1", "printer")
-        create("server1", "dhcp-server-host", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110"))
+        create("server1", "gateway", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110"))
         create("cable1", "cat5-cable")
         connect("cable1", "printer1.eth0", "server1.eth0")
     }

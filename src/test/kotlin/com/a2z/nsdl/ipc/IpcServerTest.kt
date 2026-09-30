@@ -79,7 +79,7 @@ class IpcServerTest {
         assertEquals("result", created["type"])
         assertEquals("printer1", (created["data"] as Map<*, *>)["id"])
 
-        client.request("create", mapOf("id" to "server1", "type" to "dhcp-server-host", "props" to mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
+        client.request("create", mapOf("id" to "server1", "type" to "gateway", "props" to mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
         client.request("create", mapOf("id" to "cable1", "type" to "cat5-cable"))
 
         val connected = client.request("connect", mapOf("cableId" to "cable1", "a" to "printer1.eth0", "b" to "server1.eth0"))

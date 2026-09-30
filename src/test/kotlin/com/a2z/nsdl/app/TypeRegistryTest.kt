@@ -19,10 +19,10 @@ class TypeRegistryTest {
         registry.register(Cat5CableType)
 
         assertEquals(PrinterType, registry.find("printer"))
-        assertEquals(DhcpServerHostType, registry.find("dhcp-server-host"))
+        assertEquals(DhcpServerHostType, registry.find("gateway"))
         assertEquals(Cat5CableType, registry.find("cat5-cable"))
         assertEquals(
-            setOf("printer", "dhcp-server-host", "cat5-cable"),
+            setOf("printer", "gateway", "cat5-cable"),
             registry.list().map { it.name }.toSet(),
         )
         assertTrue(registry.list().contains(PrinterType.schema))

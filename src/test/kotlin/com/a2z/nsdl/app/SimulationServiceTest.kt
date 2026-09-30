@@ -90,7 +90,7 @@ class SimulationServiceTest {
 
     @Test
     fun `gateway can be created with its default network and pool`() {
-        val result = ok(create("s1", "dhcp-server-host"))
+        val result = ok(create("s1", "gateway"))
         assertTrue(result.data is ObjectSnapshot)
     }
 
@@ -99,7 +99,7 @@ class SimulationServiceTest {
     private fun wirePrinterAndCable(): Pair<String, String> {
         ok(create("printer1", "printer"))
         ok(create("cable1", "cat5-cable"))
-        ok(create("server1", "dhcp-server-host", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
+        ok(create("server1", "gateway", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
         return "cable1" to "printer1.eth0"
     }
 
@@ -246,7 +246,7 @@ class SimulationServiceTest {
         // events; a budget of 1 must stop after the first one even though both are due by 10s.
         val limited = SimulationService(scheduler, sink, registry, Limits(maxEventsPerAdvance = 1))
         limited.handle(Command.Create("printer1", "printer"))
-        limited.handle(Command.Create("server1", "dhcp-server-host", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
+        limited.handle(Command.Create("server1", "gateway", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
         ok(limited.handle(Command.PowerOn("printer1")))
         ok(limited.handle(Command.PowerOn("server1")))
 
@@ -285,7 +285,7 @@ class SimulationServiceTest {
 
     @Test
     fun `a batch can connect to an endpoint that already exists outside the batch`() {
-        ok(create("server1", "dhcp-server-host", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
+        ok(create("server1", "gateway", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
 
         val batch = Command.ApplyTopology(
             listOf(
@@ -305,7 +305,7 @@ class SimulationServiceTest {
         val result = ok(service.handle(Command.ListTypes))
         @Suppress("UNCHECKED_CAST")
         val schemas = result.data as List<ObjectTypeSchema>
-        assertEquals(setOf("printer", "dhcp-server-host", "cat5-cable", "fiber-host"), schemas.map { it.name }.toSet())
+        assertEquals(setOf("printer", "gateway", "cat5-cable", "fiber-host"), schemas.map { it.name }.toSet())
     }
 
     @Test

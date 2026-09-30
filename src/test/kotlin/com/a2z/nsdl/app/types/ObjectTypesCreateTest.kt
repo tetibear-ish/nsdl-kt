@@ -54,7 +54,7 @@ class ObjectTypesCreateTest {
     }
 
     @Test
-    fun `creating a dhcp-server-host applies its static config and serves the declared pool`() {
+    fun `creating a gateway applies its static config and serves the declared pool`() {
         val validated = validateProperties(
             DhcpServerHostType.schema.properties,
             mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110"),

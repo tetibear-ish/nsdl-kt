@@ -59,7 +59,7 @@ next power-on. `advance` data contains `nowMs`, `eventsProcessed`, and
 
 ```json
 {"v":1,"id":"1","op":"create","params":{"id":"printer","type":"printer"}}
-{"v":1,"id":"2","op":"create","params":{"id":"server","type":"dhcp-server-host","props":{"address":"10.0.0.1","poolStart":"10.0.0.100","poolEnd":"10.0.0.110"}}}
+{"v":1,"id":"2","op":"create","params":{"id":"server","type":"gateway","props":{"address":"10.0.0.1","poolStart":"10.0.0.100","poolEnd":"10.0.0.110"}}}
 {"v":1,"id":"3","op":"create","params":{"id":"cable","type":"cat5-cable"}}
 {"v":1,"id":"4","op":"connect","params":{"cableId":"cable","a":"printer.eth0","b":"server.eth0"}}
 ```

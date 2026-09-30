@@ -5,6 +5,6 @@ describe("defaultObjectId", () => {
   it("uses friendly sequential names and skips existing ids", () => {
     expect(defaultObjectId("ethernet-switch", ["switch1", "switch2"])).toBe("switch3");
     expect(defaultObjectId("printer", ["printer1"])).toBe("printer2");
-    expect(defaultObjectId("dhcp-server-host", [])).toBe("gateway1");
+    expect(defaultObjectId("gateway", [])).toBe("gateway1");
   });
 });

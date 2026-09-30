@@ -153,7 +153,7 @@ class SimulationRuntimeTest {
         runtime.submit(
             Request(
                 Command.Create(
-                    "server1", "dhcp-server-host",
+                    "server1", "gateway",
                     mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110"),
                 ),
             ),

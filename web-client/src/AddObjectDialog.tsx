@@ -12,7 +12,7 @@ type Props = {
 
 const FRIENDLY_NAMES: Record<string, string> = {
   "ethernet-switch": "switch",
-  "dhcp-server-host": "gateway",
+  "gateway": "gateway",
   printer: "printer",
 };
 

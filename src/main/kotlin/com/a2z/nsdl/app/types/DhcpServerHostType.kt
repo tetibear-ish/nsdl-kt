@@ -21,7 +21,7 @@ import kotlin.time.Duration.Companion.seconds
 /** A single-interface host with a static address and a DHCP server serving a pool on that subnet. */
 object DhcpServerHostType : ObjectType {
     override val schema = ObjectTypeSchema(
-        name = "dhcp-server-host",
+        name = "gateway",
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("address", PropertyType.IPV4, required = false, default = Ipv4Address.parse("192.168.1.1"), description = "Static IPv4 address"),

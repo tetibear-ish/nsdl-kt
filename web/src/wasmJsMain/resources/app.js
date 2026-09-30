@@ -92,7 +92,7 @@ function startNsdl(execute, graph) {
     const commands = [
       "reset 7",
       "create printer printer1 bootMs=0",
-      "create dhcp-server-host gateway address=10.0.0.1 poolStart=10.0.0.100 poolEnd=10.0.0.110 router=10.0.0.1",
+      "create gateway gateway address=10.0.0.1 poolStart=10.0.0.100 poolEnd=10.0.0.110 router=10.0.0.1",
       "create ethernet-switch switch1",
       "create cat5-cable printer-cable",
       "create cat5-cable gateway-cable",

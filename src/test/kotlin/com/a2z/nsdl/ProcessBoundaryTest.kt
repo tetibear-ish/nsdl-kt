@@ -34,7 +34,7 @@ class ProcessBoundaryTest {
             IpcClient("127.0.0.1", port).use { client ->
                 assertResult(client.request("create", mapOf("id" to "printer", "type" to "printer")))
                 assertResult(client.request("create", mapOf(
-                    "id" to "server", "type" to "dhcp-server-host",
+                    "id" to "server", "type" to "gateway",
                     "props" to mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110"),
                 )))
                 assertResult(client.request("create", mapOf("id" to "cable", "type" to "cat5-cable")))
