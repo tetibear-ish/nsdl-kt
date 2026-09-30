@@ -1,6 +1,6 @@
 export type ClockMode = "running" | "paused";
-export type ClockSpeed = 1 | 2 | 10;
-export const CLOCK_SPEEDS: readonly ClockSpeed[] = [1, 2, 10];
+export type ClockSpeed = 1 | 10 | 100;
+export const CLOCK_SPEEDS: readonly ClockSpeed[] = [1, 10, 100];
 
 export type ClockState = { mode: ClockMode; speed: ClockSpeed; nowMs: number };
 

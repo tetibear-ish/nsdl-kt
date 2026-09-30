@@ -157,7 +157,7 @@ describe("BrowserWasmTransport", () => {
 
       transport.pauseClock();
       transport.resumeClock();
-      transport.setClockSpeed(2);
+      transport.setClockSpeed(100);
       await transport.step(50);
 
       expect(listener).toHaveBeenCalledTimes(4);
