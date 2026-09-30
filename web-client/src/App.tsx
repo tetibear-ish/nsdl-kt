@@ -14,6 +14,8 @@ import {
 import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddObjectDialog } from "./AddObjectDialog";
+import { eventToPulse } from "./activity";
+import { useActivityStore } from "./activityStore";
 import { NetworkNode } from "./NetworkNode";
 import { inspectionIds } from "./inspector";
 import {
@@ -102,10 +104,24 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     Promise.all([transport.listTypes(), refresh()]).then(([typeResult, revision]) => {
       if (disposed) return;
       if (typeResult.ok) setTypes(typeResult.data);
-      unsubscribe = transport.subscribe(revision, () => { void refresh(); });
+      unsubscribe = transport.subscribe(revision, (event) => {
+        const pulse = eventToPulse(event);
+        if (pulse) {
+          // Frame activity alone never changes topology structure, so skip the full refresh --
+          // otherwise a burst of traffic would trigger an unbounded listObjects()/re-project per frame.
+          useActivityStore.getState().record(event.seq ?? 0, pulse.portId, pulse.kind, pulse.reason);
+          return;
+        }
+        void refresh();
+      });
     }).catch((error: unknown) => setStatus(error instanceof Error ? error.message : String(error)));
     return () => { disposed = true; unsubscribe(); };
   }, [refresh, transport]);
+
+  useEffect(() => {
+    const interval = setInterval(() => useActivityStore.getState().prune(), 100);
+    return () => clearInterval(interval);
+  }, []);
 
   const onConnect = useCallback(async (connection: Connection) => {
     if (!connection.sourceHandle || !connection.targetHandle) return;

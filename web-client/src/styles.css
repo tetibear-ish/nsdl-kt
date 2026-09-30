@@ -39,6 +39,9 @@ button.icon-button { padding: 9px 12px; font-size: 16px; line-height: 1; letter-
 .power-booting .node-status { background: #ffc96b; }
 .react-flow__handle.port { width: 12px; height: 12px; border: 2px solid #9bb1c5; background: #10253a; }
 .react-flow__handle.port.occupied { border-color: #5de4d1; background: #2a706b; }
+.react-flow__handle.port.pulse-tx { border-color: #6bb8ff; background: #6bb8ff; box-shadow: 0 0 10px 2px #6bb8ff; }
+.react-flow__handle.port.pulse-rx { border-color: #7de47f; background: #7de47f; box-shadow: 0 0 10px 2px #7de47f; }
+.react-flow__handle.port.pulse-drop { border-color: #ff6b6b; background: #ff6b6b; box-shadow: 0 0 10px 2px #ff6b6b; }
 .topology-edge path { stroke: #66839d; stroke-width: 3; }
 .dialog-overlay { position: fixed; inset: 0; z-index: 20; background: rgba(2, 8, 15, .72); backdrop-filter: blur(4px); }
 .dialog-content { position: fixed; z-index: 21; top: 50%; left: 50%; width: min(470px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; transform: translate(-50%, -50%); border: 1px solid #38536d; border-radius: 16px; padding: 24px; background: #0d2033; box-shadow: 0 24px 80px #0009; }
