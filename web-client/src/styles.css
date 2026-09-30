@@ -13,6 +13,14 @@ button { border: 1px solid #3b8d88; border-radius: 9px; padding: 9px 15px; backg
 button:hover { background: #185052; }
 button.secondary { border-color: #40566c; background: transparent; color: #a9bdd0; }
 .canvas { min-height: 0; }
+.workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
+.inspector { min-width: 0; overflow: auto; border-left: 1px solid #29445f; padding: 16px; background: rgba(7, 19, 31, .92); }
+.inspector h2 { margin: 0 0 12px; color: #8da5ba; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+.inspector h3 { margin: 12px 0 4px; color: #5de4d1; font: 700 12px ui-monospace, monospace; }
+.inspector p { color: #718ba2; font-size: 13px; }
+.inspector pre { margin: 0; overflow: auto; white-space: pre-wrap; color: #c2d4e4; font: 11px/1.5 ui-monospace, monospace; }
+.inspector button { width: 100%; margin-top: 14px; }
+@media (max-width: 800px) { .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 180px; } .inspector { border-top: 1px solid #29445f; border-left: 0; } }
 .react-flow { background: transparent; }
 .network-node { position: relative; display: grid; min-width: 172px; padding: 17px 24px; border: 2px solid #587087; border-radius: 14px; background: #10253a; box-shadow: 0 14px 30px rgba(0,0,0,.3); text-align: center; }
 .network-node strong { color: #f5f9fd; font-size: 15px; }

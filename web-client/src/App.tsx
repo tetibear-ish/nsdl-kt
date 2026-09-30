@@ -17,7 +17,7 @@ import { NetworkNode } from "./NetworkNode";
 import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
 import { selectTransport, type SimulationTransport } from "./transport";
-import type { ObjectTypeSchema } from "./types";
+import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
 
 const nodeTypes = { network: NetworkNode };
 const defaultTransport = selectTransport();
@@ -29,6 +29,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [addOpen, setAddOpen] = useState(false);
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
+  const [inspected, setInspected] = useState<ObjectSnapshot[]>([]);
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
@@ -81,6 +82,22 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     await refresh();
   }, [refresh, transport]);
 
+  const disconnecting = useRef(new Set<string>());
+  const disconnect = useCallback(async (edge: Edge) => {
+    if (disconnecting.current.has(edge.id)) return;
+    disconnecting.current.add(edge.id);
+    const result = await transport.execute("disconnect", { cableId: edge.id });
+    disconnecting.current.delete(edge.id);
+    setLog((entries) => [...entries.slice(-99), result.ok ? `disconnected ${edge.id}` : `disconnect failed: ${result.error.message}`]);
+    await refresh();
+  }, [refresh, transport]);
+
+  const inspectNode = useCallback(async (node: NetworkNodeType) => {
+    const ids = [node.id, ...(node.data.snapshot.relations.interfaces ?? []), ...(node.data.snapshot.relations.services ?? [])];
+    const results = await Promise.all(ids.map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
+    setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
+  }, [transport]);
+
   const togglePower = useCallback(async (_event: React.MouseEvent, node: NetworkNodeType) => {
     const op = node.data.snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
     const result = await transport.execute(op, { id: node.id });
@@ -119,6 +136,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           <button onClick={() => openAddAt()}>Add…</button>
         </div>
       </header>
+      <div className="workspace">
       <section className="canvas">
         <ReactFlow<NetworkNodeType, Edge>
           connectionMode={ConnectionMode.Loose}
@@ -129,8 +147,15 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           nodeTypes={nodeTypes}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
+          onEdgesDelete={(deleted) => { deleted.forEach((edge) => { void disconnect(edge); }); }}
+          onEdgeDoubleClick={(_event, edge) => { void disconnect(edge); }}
+          onEdgeMouseEnter={(_event, edge) => setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : [])}
+          onEdgeMouseLeave={() => setInspected([])}
+          onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
           onNodeClick={togglePower}
+          onNodeMouseEnter={(_event, node) => { void inspectNode(node); }}
+          onNodeMouseLeave={() => setInspected([])}
           onNodeDragStop={(_event, node) => setPosition(node.id, node.position)}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
@@ -141,6 +166,22 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           <MiniMap<NetworkNodeType> nodeColor={(node) => node.data.snapshot.state.power === "ON" ? "#5de4d1" : "#587087"} />
         </ReactFlow>
       </section>
+      <aside className="inspector" aria-label="Element state">
+        <h2>Element state</h2>
+        {inspected.length === 0
+          ? <p>Hover over a device or cable.</p>
+          : inspected.map((snapshot) => (
+            <section key={snapshot.id}>
+              <h3>{snapshot.id}</h3>
+              <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>
+            </section>
+          ))}
+        {inspected[0]?.kind === "CABLE" && <button onClick={() => {
+          const edge = edges.find((candidate) => candidate.id === inspected[0].id);
+          if (edge) void disconnect(edge);
+        }}>Disconnect</button>}
+      </aside>
+      </div>
       <section className="activity-log" aria-label="Activity log">
         <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
         <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>

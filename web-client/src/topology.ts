@@ -33,6 +33,7 @@ export function projectTopology(
 
   const nodes: NetworkNode[] = devices.map((snapshot, index) => ({
     id: snapshot.id,
+    deletable: false,
     type: "network",
     position: positions[snapshot.id] ?? {
       x: 80 + (index % 4) * 250,
@@ -59,6 +60,7 @@ export function projectTopology(
       targetHandle: endpoints[1],
       type: "smoothstep",
       className: "topology-edge",
+      data: { snapshot: cable },
     }];
   });
 

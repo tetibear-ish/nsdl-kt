@@ -41,6 +41,7 @@ describe("projectTopology", () => {
         sourceHandle: "printer1.eth0",
         target: "switch1",
         targetHandle: "switch1.port1",
+        data: { snapshot: snapshots[2] },
       }),
     ]);
   });
