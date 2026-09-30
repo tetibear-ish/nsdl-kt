@@ -2,7 +2,7 @@
 * { box-sizing: border-box; }
 html, body, #root { width: 100%; height: 100%; margin: 0; }
 button, input, select { font: inherit; }
-.app-shell { width: 100%; height: 100%; display: grid; grid-template-rows: 64px 1fr; background: radial-gradient(circle at 15% 0%, #163451, transparent 35%), #07111f; }
+.app-shell { width: 100%; height: 100%; display: grid; grid-template-rows: 64px minmax(0, 1fr) 150px; background: radial-gradient(circle at 15% 0%, #163451, transparent 35%), #07111f; }
 .toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #29445f; background: rgba(7, 17, 31, .9); }
 .toolbar > div:first-child { display: flex; align-items: baseline; gap: 12px; }
 .toolbar span { color: #5de4d1; font: 700 12px ui-monospace, monospace; letter-spacing: .18em; }
@@ -36,3 +36,8 @@ button.secondary { border-color: #40566c; background: transparent; color: #a9bdd
 .dialog-content input:focus, .dialog-content select:focus { border-color: #5de4d1; }
 .dialog-content footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
 .form-error { margin: 0; color: #ff9297; font-size: 13px; }
+.activity-log { min-height: 0; border-top: 1px solid #29445f; padding: 10px 18px; background: #07131f; overflow: hidden; }
+.activity-log header { display: flex; align-items: center; justify-content: space-between; }
+.activity-log header strong { color: #8da5ba; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
+.activity-log header button { padding: 3px 9px; font-size: 11px; }
+.activity-log ol { height: 96px; margin: 6px 0 0; padding: 0; overflow: auto; list-style: none; color: #a9bdd0; font: 12px/1.6 ui-monospace, monospace; }

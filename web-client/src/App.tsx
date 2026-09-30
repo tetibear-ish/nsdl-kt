@@ -28,8 +28,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [types, setTypes] = useState<ObjectTypeSchema[]>([]);
   const [addOpen, setAddOpen] = useState(false);
   const [status, setStatus] = useState("Connecting…");
+  const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
+  const powerStates = useRef<Record<string, unknown>>({});
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
 
@@ -40,6 +42,14 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       return 0;
     }
     const projected = projectTopology(result.data, useEditorStore.getState().positions);
+    const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
+    const transitions = projected.nodes.flatMap((node) => {
+      const before = powerStates.current[node.id];
+      const after = node.data.snapshot.state.power;
+      return before !== undefined && before !== after ? [`${node.id}: ${String(before)} → ${String(after)}`] : [];
+    });
+    powerStates.current = nextPower;
+    if (transitions.length) setLog((entries) => [...entries.slice(-99), ...transitions]);
     setNodes(projected.nodes);
     setEdges(projected.edges);
     setStatus(`revision ${result.revision}`);
@@ -65,6 +75,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       connections: [{ cableId, a: connection.sourceHandle, b: connection.targetHandle }],
     });
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
+    setLog((entries) => [...entries.slice(-99), result.ok
+      ? `connected ${connection.sourceHandle} ↔ ${connection.targetHandle}`
+      : `connect failed: ${result.error.message}`]);
     await refresh();
   }, [refresh, transport]);
 
@@ -72,6 +85,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const op = node.data.snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
     const result = await transport.execute(op, { id: node.id });
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
+    setLog((entries) => [...entries.slice(-99), result.ok ? `${op} ${node.id}` : `${op} ${node.id}: ${result.error.message}`]);
     await refresh();
   }, [refresh, transport]);
 
@@ -79,6 +93,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const cleaned = Object.fromEntries(Object.entries(props).filter(([, value]) => value !== ""));
     const result = await transport.execute("create", { id, type: type.name, props: cleaned });
     if (!result.ok) return `${result.error.code}: ${result.error.message}`;
+    setLog((entries) => [...entries.slice(-99), `created ${type.name} ${id}`]);
     setPosition(id, placement.current);
     await refresh();
     return null;
@@ -125,6 +140,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           <Controls />
           <MiniMap<NetworkNodeType> nodeColor={(node) => node.data.snapshot.state.power === "ON" ? "#5de4d1" : "#587087"} />
         </ReactFlow>
+      </section>
+      <section className="activity-log" aria-label="Activity log">
+        <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
+        <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>
       </section>
       <AddObjectDialog open={addOpen} types={types} onCreate={createObject} onOpenChange={setAddOpen} />
     </main>

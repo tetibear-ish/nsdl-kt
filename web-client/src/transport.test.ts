@@ -45,4 +45,17 @@ describe("BrowserWasmTransport", () => {
 
     expect(listener).not.toHaveBeenCalled();
   });
+
+  it("advances virtual time while a browser subscription is active", async () => {
+    vi.useFakeTimers();
+    const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 0, changed: true, data: null }));
+    const transport = new BrowserWasmTransport(Promise.resolve({ command }), 250);
+
+    const unsubscribe = transport.subscribe(0, vi.fn());
+    await vi.advanceTimersByTimeAsync(250);
+    unsubscribe();
+
+    expect(JSON.parse(command.mock.calls[0][0])).toMatchObject({ op: "advance", params: { durationMs: 250 } });
+    vi.useRealTimers();
+  });
 });

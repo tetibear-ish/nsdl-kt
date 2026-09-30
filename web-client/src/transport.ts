@@ -68,8 +68,10 @@ declare global {
 export class BrowserWasmTransport implements SimulationTransport {
   private readonly listeners = new Set<(event: SimulationEvent) => void>();
   private readonly ready: Promise<WasmBridge>;
+  private timer: ReturnType<typeof setInterval> | undefined;
+  private lastTick = Date.now();
 
-  constructor(ready?: Promise<WasmBridge>) {
+  constructor(ready?: Promise<WasmBridge>, private readonly tickMs = 250) {
     this.ready = ready ?? window.nsdlWasmReady ?? new Promise(() => {});
   }
 
@@ -87,7 +89,22 @@ export class BrowserWasmTransport implements SimulationTransport {
 
   subscribe(_from: number, listener: (event: SimulationEvent) => void): () => void {
     this.listeners.add(listener);
-    return () => this.listeners.delete(listener);
+    if (!this.timer) {
+      this.lastTick = Date.now();
+      this.timer = setInterval(() => {
+        const now = Date.now();
+        const durationMs = Math.max(1, now - this.lastTick);
+        this.lastTick = now;
+        void this.execute("advance", { durationMs });
+      }, this.tickMs);
+    }
+    return () => {
+      this.listeners.delete(listener);
+      if (this.listeners.size === 0 && this.timer) {
+        clearInterval(this.timer);
+        this.timer = undefined;
+      }
+    };
   }
 }
 
