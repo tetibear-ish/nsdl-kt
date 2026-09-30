@@ -16,6 +16,8 @@ The topology editor should support these interactions:
   the node.
 - Each connected endpoint has an activity light that flashes when its interface
   emits or receives a frame or packet.
+- Virtual time advances automatically at real-time speed by default: one
+  virtual second elapses for each regular wall-clock second.
 - Users can inspect every object and see its configuration, power state,
   interfaces, connections, and relevant protocol state.
 - Multiple users can open the same server-hosted topology, modify it
@@ -86,6 +88,87 @@ simulation thread. Graph mutations are displayed only after the command is
 accepted. SSE events update all connected browsers. In standalone mode, the
 Wasm adapter applies commands to its local simulation and publishes equivalent
 updates to the editor.
+
+## Default real-time clock
+
+Interactive sessions should start in **running, 1× real-time mode**. Users
+should not need to repeatedly issue `advance MILLISECONDS` to boot devices,
+complete DHCP, or observe traffic. One second of monotonic wall-clock time
+advances the deterministic scheduler by one virtual second.
+
+The simulation core remains a virtual-time system. It must not read the system
+clock directly or replace scheduled work with host timers. A clock driver at
+the runtime/composition boundary measures elapsed monotonic time and submits
+bounded advance operations through `SimulationRuntime`:
+
+```text
+monotonic elapsed time
+        |
+        v
+RealTimeClockDriver -- Advance(elapsed * speed) --> SimulationRuntime
+                                                    |
+                                                    v
+                                             VirtualScheduler
+```
+
+This preserves deterministic event ordering and journal replay while making an
+interactive session feel like a live network.
+
+### Server mode
+
+There is exactly one clock driver per shared simulation, owned by the server.
+Browsers never advance time independently. Otherwise, opening a second client
+would accidentally double the simulation rate.
+
+The driver should:
+
+- Use a monotonic time source, not calendar time.
+- Default to running at `1.0` speed.
+- Submit advances through the same runtime queue as user commands.
+- Advance in small bounded increments, such as 25–100 ms, without busy-waiting.
+- Calculate elapsed time from the monotonic clock rather than assuming every
+  timer callback arrived exactly on schedule.
+- Respect the scheduler's event budget and continue truncated work on a later
+  tick without blocking command handling indefinitely.
+- Stop cleanly when the simulation runtime closes.
+
+All clients observe the resulting events over the shared sequenced SSE stream.
+A client connecting or disconnecting does not start, stop, or change the clock.
+
+### Standalone Wasm mode
+
+The browser-local simulation also defaults to 1× running time. Its clock driver
+may use `requestAnimationFrame` while visible and a bounded timer fallback, but
+it must calculate elapsed monotonic time rather than treating animation frames
+as a fixed duration.
+
+When a browser tab has been suspended, do not apply an unbounded catch-up
+advance immediately on resume. Cap each catch-up interval and display that the
+local simulation is catching up, or pause automatically after a configurable
+threshold.
+
+### Controls
+
+The topology toolbar should provide:
+
+- **Run/Pause** toggle.
+- Current virtual time.
+- Speed choices such as `0.25×`, `0.5×`, `1×`, `2×`, `10×`, and maximum.
+- **Step** controls for precise testing, including a millisecond duration and
+  optionally “next event.”
+
+Manual `Advance` remains part of the API and CLI for deterministic tests,
+journal replay, automation, and paused sessions. It is an expert/testing
+control rather than the default way interactive time progresses.
+
+Clock-control commands in shared mode are authoritative multi-client commands.
+When one user pauses or changes speed, every client receives a clock-state
+event and updates its toolbar. Permissions may later restrict clock control,
+but the initial policy can allow every connected user to control it.
+
+The input journal should record clock-control changes and the actual virtual
+advance increments, not nondeterministic wall-clock timestamps. Replaying the
+journal with the same seed must still produce the same event trace.
 
 ## Multi-user collaboration
 
@@ -483,13 +566,15 @@ alternative ecosystem.
 6. Render snapshot-derived custom nodes and port handles.
 7. Add schema-driven **Add...** dialogs and isolated-node placement.
 8. Add power toggling and event-driven state styling.
-9. Add atomic cable creation through handle dragging.
-10. Add reconnect/disconnect-on-empty-drop behavior.
-11. Add event-driven per-port transmit, receive, and drop activity lights with
+9. Add the runtime-owned 1× real-time clock driver plus run, pause, speed, and
+   manual-step controls.
+10. Add atomic cable creation through handle dragging.
+11. Add reconnect/disconnect-on-empty-drop behavior.
+12. Add event-driven per-port transmit, receive, and drop activity lights with
     burst coalescing and reduced-motion behavior.
-12. Add context menus, inspection panels, keyboard paths, and accessibility
+13. Add context menus, inspection panels, keyboard paths, and accessibility
    checks.
-13. Add a two-browser Playwright test proving that creation, power, movement,
+14. Add a two-browser Playwright test proving that creation, power, movement,
     connection, and disconnection in one client update the other client.
-14. Add Playwright coverage for the complete printer-switch-gateway DHCP flow,
+15. Add Playwright coverage for the complete printer-switch-gateway DHCP flow,
     including activity at both ends of each traversed connection.
