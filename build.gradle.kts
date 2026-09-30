@@ -18,6 +18,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    systemProperty("test.runtime.classpath", sourceSets.test.get().runtimeClasspath.asPath)
     testLogging {
         events("failed")
         exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL

@@ -1,6 +1,8 @@
 package com.a2z.nsdl
 
-fun main() {
-    val greeter = Greeter("Miori")
-    greeter.sayHello()
+import kotlin.system.exitProcess
+
+fun main(args: Array<String>) {
+    val exitCode = Cli.run(args, System.out, System.err)
+    if (exitCode != 0) exitProcess(exitCode)
 }
