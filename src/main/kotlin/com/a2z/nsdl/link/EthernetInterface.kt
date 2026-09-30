@@ -21,6 +21,7 @@ class EthernetInterface(
     private val events: EventSink,
     override val media: MediaType = MediaType.TWISTED_PAIR,
     private val ownerId: ObjectId? = null,
+    private val promiscuous: Boolean = false,
 ) : LinkEndpoint, FramePort, Inspectable {
     private var medium: Medium? = null
     private var upper: FrameHandler? = null
@@ -68,7 +69,8 @@ class EthernetInterface(
     override fun receive(frame: EthernetFrame) {
         when {
             !isEnabled -> events.emit(id, EventPayload.FrameDropped(frame, DropReason.RECEIVER_DISABLED))
-            frame.dst != mac && !frame.dst.isBroadcast -> events.emit(id, EventPayload.FrameDropped(frame, DropReason.NOT_FOR_US))
+            !promiscuous && frame.dst != mac && !frame.dst.isBroadcast ->
+                events.emit(id, EventPayload.FrameDropped(frame, DropReason.NOT_FOR_US))
             else -> {
                 events.emit(id, EventPayload.FrameReceived(frame))
                 upper?.onFrame(frame)
