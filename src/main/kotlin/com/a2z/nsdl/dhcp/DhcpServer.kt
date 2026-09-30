@@ -46,6 +46,7 @@ class DhcpServer(
 
     private val bindings = linkedMapOf<MacAddress, Binding>()
     private val expiryTimers = mutableMapOf<MacAddress, Cancellable>()
+    private val leaseExpiresAtMs = mutableMapOf<MacAddress, Long>()
     private var scope: WorkScope? = null
     private var active = false
 
@@ -63,6 +64,7 @@ class DhcpServer(
         scope = null
         expiryTimers.values.forEach { it.cancel() }
         expiryTimers.clear()
+        leaseExpiresAtMs.clear()
         bindings.clear()
     }
 
@@ -110,11 +112,14 @@ class DhcpServer(
     /** (Re)schedules reclamation of [mac]'s lease, restarting its deadline from now. */
     private fun scheduleExpiry(mac: MacAddress) {
         expiryTimers.remove(mac)?.cancel()
-        expiryTimers[mac] = scope?.schedule(pool.leaseSeconds.seconds) { onExpire(mac) } ?: return
+        val currentScope = scope ?: return
+        leaseExpiresAtMs[mac] = currentScope.now.millis + pool.leaseSeconds * 1000L
+        expiryTimers[mac] = currentScope.schedule(pool.leaseSeconds.seconds) { onExpire(mac) }
     }
 
     private fun onExpire(mac: MacAddress) {
         expiryTimers.remove(mac)
+        leaseExpiresAtMs.remove(mac)
         val binding = bindings.remove(mac) ?: return
         events.emit(id, EventPayload.ProtocolStateChanged(PROTOCOL, binding.state.name, "NONE", "client=$mac address=${binding.address} lease expired"))
     }
@@ -154,7 +159,9 @@ class DhcpServer(
                 "subnetMask" to pool.subnetMask.toString(), "router" to pool.router?.toString(),
                 "leaseSeconds" to pool.leaseSeconds,
             ),
-            "leases" to bindings.map { (mac, b) -> mapOf("mac" to mac.toString(), "address" to b.address.toString(), "state" to b.state.name) },
+            "leases" to bindings.map { (mac, b) ->
+                mapOf("mac" to mac.toString(), "address" to b.address.toString(), "state" to b.state.name, "expiresAtMs" to leaseExpiresAtMs[mac])
+            },
         ),
         relations = mapOf("interface" to listOf(transport.interfaceId)),
     )

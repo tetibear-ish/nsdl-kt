@@ -70,7 +70,10 @@ class DhcpServerTest {
         assertEquals(DhcpMessageType.ACK, replies.last().type)
         @Suppress("UNCHECKED_CAST")
         val leases = server.snapshot().state["leases"] as List<Map<String, Any?>>
-        assertEquals(listOf(mapOf("mac" to clientNic.mac.toString(), "address" to "10.0.0.100", "state" to "BOUND")), leases)
+        assertEquals(1, leases.size)
+        assertEquals(clientNic.mac.toString(), leases.single()["mac"])
+        assertEquals("10.0.0.100", leases.single()["address"])
+        assertEquals("BOUND", leases.single()["state"])
     }
 
     @Test
@@ -117,6 +120,33 @@ class DhcpServerTest {
     private fun bind() {
         send(DhcpMessageType.DISCOVER)
         send(DhcpMessageType.REQUEST, requested = replies.last().yiaddr, serverId = serverIp)
+    }
+
+    @Test
+    fun `an offer alone has no expiry deadline`() {
+        send(DhcpMessageType.DISCOVER)
+
+        assertEquals(listOf(null), leases().map { it["expiresAtMs"] })
+    }
+
+    @Test
+    fun `a bound lease's snapshot reports a sane expiry deadline`() {
+        bind()
+
+        val expiresAtMs = leases().single()["expiresAtMs"] as Long
+        assertTrue(expiresAtMs in scheduler.now.millis..(scheduler.now.millis + 600_000), "deadline is within one lease period of now")
+    }
+
+    @Test
+    fun `a renewal pushes the reported deadline out`() {
+        bind()
+        val originalDeadline = leases().single()["expiresAtMs"] as Long
+
+        scheduler.advanceBy(500.seconds)
+        send(DhcpMessageType.REQUEST, requested = Ipv4Address.parse("10.0.0.100"), serverId = serverIp)
+
+        val renewedDeadline = leases().single()["expiresAtMs"] as Long
+        assertTrue(renewedDeadline > originalDeadline, "renewal reports a later deadline")
     }
 
     @Test
