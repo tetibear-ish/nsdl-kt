@@ -15,6 +15,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddObjectDialog } from "./AddObjectDialog";
 import { NetworkNode } from "./NetworkNode";
 import { inspectionIds } from "./inspector";
+import {
+  buildDocument,
+  exportDocumentAsFile,
+  importDocumentFromFile,
+  loadLabFromLocalStorage,
+  saveLabToLocalStorage,
+} from "./persistence";
 import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
 import { selectTransport, type SimulationTransport } from "./transport";
@@ -37,6 +44,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const pinnedInspection = useRef<{ kind: "node" | "edge"; id: string } | null>(null);
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
+  const records = useEditorStore((state) => state.records);
+  const setRecord = useEditorStore((state) => state.setRecord);
+  const importInput = useRef<HTMLInputElement | null>(null);
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -99,11 +109,12 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       connections: [{ cableId, a: connection.sourceHandle, b: connection.targetHandle }],
     });
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
+    if (result.ok) setRecord(cableId, { type: "cat5-cable", props: {} });
     setLog((entries) => [...entries.slice(-99), result.ok
       ? `connected ${connection.sourceHandle} ↔ ${connection.targetHandle}`
       : `connect failed: ${result.error.message}`]);
     await refresh();
-  }, [refresh, transport]);
+  }, [refresh, setRecord, transport]);
 
   const disconnecting = useRef(new Set<string>());
   const disconnect = useCallback(async (edge: Edge) => {
@@ -121,9 +132,61 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     if (!result.ok) return `${result.error.code}: ${result.error.message}`;
     setLog((entries) => [...entries.slice(-99), `created ${type.name} ${id}`]);
     setPosition(id, placement.current);
+    setRecord(id, { type: type.name, props: cleaned });
     await refresh();
     return null;
-  }, [refresh, setPosition, transport]);
+  }, [refresh, setPosition, setRecord, transport]);
+
+  const saveLab = useCallback(() => {
+    const doc = buildDocument(
+      Object.entries(records).map(([id, record]) => ({ id, type: record.type, props: record.props })),
+      edges.map((edge) => ({ cableId: edge.id, a: edge.sourceHandle ?? "", b: edge.targetHandle ?? "" })),
+      positions,
+    );
+    saveLabToLocalStorage(doc);
+    setLog((entries) => [...entries.slice(-99), `saved lab (${doc.objects.length} objects, ${doc.connections.length} cables)`]);
+  }, [edges, positions, records]);
+
+  const applyLoadedDocument = useCallback(async (
+    result: ReturnType<typeof loadLabFromLocalStorage> | Awaited<ReturnType<typeof importDocumentFromFile>>,
+    sourceLabel: string,
+  ) => {
+    if (result === null) {
+      setLog((entries) => [...entries.slice(-99), "no saved lab found"]);
+      return;
+    }
+    if (!result.ok) {
+      setLog((entries) => [...entries.slice(-99), ...result.errors.map((error) => `${sourceLabel}: ${error.path || "(document)"}: ${error.message}`)]);
+      return;
+    }
+    const { document } = result;
+    const applied = await transport.execute("applyTopology", { objects: document.objects, connections: document.connections });
+    if (!applied.ok) {
+      setLog((entries) => [...entries.slice(-99), `${sourceLabel} failed: ${applied.error.code}: ${applied.error.message}`]);
+      return;
+    }
+    document.objects.forEach((object) => setRecord(object.id, { type: object.type, props: object.props }));
+    Object.entries(document.positions).forEach(([id, position]) => setPosition(id, position));
+    setLog((entries) => [...entries.slice(-99), `${sourceLabel}: applied ${document.objects.length} objects, ${document.connections.length} cables`]);
+    await refresh();
+  }, [refresh, setPosition, setRecord, transport]);
+
+  const loadLab = useCallback(() => {
+    void applyLoadedDocument(loadLabFromLocalStorage(), "loaded saved lab");
+  }, [applyLoadedDocument]);
+
+  const exportLab = useCallback(() => {
+    const doc = buildDocument(
+      Object.entries(records).map(([id, record]) => ({ id, type: record.type, props: record.props })),
+      edges.map((edge) => ({ cableId: edge.id, a: edge.sourceHandle ?? "", b: edge.targetHandle ?? "" })),
+      positions,
+    );
+    exportDocumentAsFile(doc, "nsdl-topology.json");
+  }, [edges, positions, records]);
+
+  const importLab = useCallback((file: File) => {
+    void importDocumentFromFile(file).then((result) => applyLoadedDocument(result, `imported ${file.name}`));
+  }, [applyLoadedDocument]);
 
   const openAddAt = useCallback((clientX?: number, clientY?: number) => {
     if (clientX != null && clientY != null && flow.current) {
@@ -143,6 +206,21 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <div className="toolbar-actions">
           <output>{status}</output>
           <button onClick={() => openAddAt()}>Add…</button>
+          <button className="secondary" onClick={saveLab}>Save</button>
+          <button className="secondary" onClick={loadLab}>Load</button>
+          <button className="secondary" onClick={exportLab}>Export…</button>
+          <button className="secondary" onClick={() => importInput.current?.click()}>Import…</button>
+          <input
+            ref={importInput}
+            type="file"
+            accept="application/json"
+            hidden
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) importLab(file);
+              event.target.value = "";
+            }}
+          />
         </div>
       </header>
       <div className="workspace">
