@@ -69,6 +69,10 @@ class DhcpClient(
     private var attempts = 0
     private var selectedServer: Ipv4Address? = null
     private var offeredIp: Ipv4Address? = null
+    private var assignedSubnetMask: Ipv4Address? = null
+    private var assignedRouter: Ipv4Address? = null
+    private var leaseStartMs: Long? = null
+    private var leaseDurationMs: Long? = null
     private var ignoredReplies = 0L
 
     init {
@@ -91,6 +95,10 @@ class DhcpClient(
         configurator.applyConfig(null)
         selectedServer = null
         offeredIp = null
+        assignedSubnetMask = null
+        assignedRouter = null
+        leaseStartMs = null
+        leaseDurationMs = null
         transition(DhcpClientState.STOPPED)
     }
 
@@ -159,6 +167,10 @@ class DhcpClient(
         cancelTimer()
         selectedServer = null
         offeredIp = null
+        assignedSubnetMask = null
+        assignedRouter = null
+        leaseStartMs = null
+        leaseDurationMs = null
         transition(DhcpClientState.INIT, reason)
         arm(timers.restartDelay) { if (transport.linkUp) beginSelecting() }
     }
@@ -170,6 +182,10 @@ class DhcpClient(
         configurator.applyConfig(null)
         selectedServer = null
         offeredIp = null
+        assignedSubnetMask = null
+        assignedRouter = null
+        leaseStartMs = null
+        leaseDurationMs = null
         transition(DhcpClientState.INIT, reason)
         if (transport.linkUp) beginSelecting()
     }
@@ -203,10 +219,11 @@ class DhcpClient(
 
     private fun bind(ack: DhcpMessage) {
         cancelTimer()
+        val subnetMask = ack.subnetMask ?: DEFAULT_MASK
         configurator.applyConfig(
             Ipv4Config(
                 address = ack.yiaddr,
-                subnetMask = ack.subnetMask ?: DEFAULT_MASK,
+                subnetMask = subnetMask,
                 router = ack.router,
                 source = ConfigSource.DHCP,
                 leaseSeconds = ack.leaseSeconds,
@@ -214,6 +231,10 @@ class DhcpClient(
             ),
         )
         offeredIp = ack.yiaddr
+        assignedSubnetMask = subnetMask
+        assignedRouter = ack.router
+        leaseStartMs = scope?.now?.millis
+        leaseDurationMs = ack.leaseSeconds?.let { it * 1000L }
         transition(DhcpClientState.BOUND, "address=${ack.yiaddr} lease=${ack.leaseSeconds}s")
         scheduleLeaseTimers(ack.leaseSeconds)
     }
@@ -285,6 +306,10 @@ class DhcpClient(
             "attempts" to attempts,
             "selectedServer" to selectedServer?.toString(),
             "offeredAddress" to offeredIp?.toString(),
+            "subnetMask" to assignedSubnetMask?.toString(),
+            "router" to assignedRouter?.toString(),
+            "leaseStartMs" to leaseStartMs,
+            "leaseDurationMs" to leaseDurationMs,
             "ignoredReplies" to ignoredReplies,
         ),
         relations = mapOf("interface" to listOf(transport.interfaceId)),

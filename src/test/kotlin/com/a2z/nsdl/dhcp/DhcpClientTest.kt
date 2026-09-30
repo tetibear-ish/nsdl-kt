@@ -387,4 +387,69 @@ class DhcpClientTest {
         assertEquals(requestCountAtStop, requests.size, "no renewal, rebind or expiry work ran after power-off")
         assertEquals(DhcpClientState.STOPPED, client.state)
     }
+
+    // -- Snapshot: lease address, timing and deadlines --
+
+    @Test
+    fun `snapshot has no address, subnet, router or lease timing before any offer`() {
+        connectAndStart()
+
+        val state = client.snapshot().state
+        assertNull(state["offeredAddress"])
+        assertNull(state["subnetMask"])
+        assertNull(state["router"])
+        assertNull(state["leaseStartMs"])
+        assertNull(state["leaseDurationMs"])
+    }
+
+    @Test
+    fun `snapshot exposes address, subnet, router, server and lease timing once bound`() {
+        acquire()
+
+        val state = client.snapshot().state
+        assertEquals(offeredIp.toString(), state["offeredAddress"])
+        assertEquals(mask.toString(), state["subnetMask"])
+        assertEquals(serverIp.toString(), state["router"])
+        assertEquals(serverIp.toString(), state["selectedServer"])
+        assertTrue((state["leaseStartMs"] as Long) in 0..scheduler.now.millis, "lease start is a sane virtual timestamp")
+        assertEquals(3600 * 1000L, state["leaseDurationMs"])
+    }
+
+    @Test
+    fun `a successful T1 renewal refreshes the lease start time`() {
+        acquire()
+        val boundAt = client.snapshot().state["leaseStartMs"] as Long
+        scheduler.advanceBy(1800.seconds) // T1
+        reply(DhcpMessageType.ACK)
+
+        val renewedAt = client.snapshot().state["leaseStartMs"] as Long
+        assertTrue(renewedAt > boundAt, "renewal refreshes the lease start time")
+        assertEquals(3600 * 1000L, client.snapshot().state["leaseDurationMs"])
+    }
+
+    @Test
+    fun `lease timing is cleared after a NAK during renewal, alongside the address`() {
+        acquire()
+        scheduler.advanceBy(1800.seconds) // T1
+        reply(DhcpMessageType.NAK)
+
+        val state = client.snapshot().state
+        assertNull(state["offeredAddress"])
+        assertNull(state["subnetMask"])
+        assertNull(state["router"])
+        assertNull(state["leaseStartMs"])
+        assertNull(state["leaseDurationMs"])
+    }
+
+    @Test
+    fun `lease timing is cleared once the lease expires`() {
+        acquire()
+        cable.disconnect()
+        scheduler.advanceBy(3600.seconds) // expiry, with no link to retry over
+
+        val state = client.snapshot().state
+        assertEquals(DhcpClientState.INIT, client.state)
+        assertNull(state["leaseStartMs"])
+        assertNull(state["leaseDurationMs"])
+    }
 }
