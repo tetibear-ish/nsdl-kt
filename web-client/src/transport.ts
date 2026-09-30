@@ -57,6 +57,9 @@ export class RemoteTransport implements SimulationTransport {
 }
 
 export type WasmBridge = { command(request: string): string };
+const MUTATING_OPERATIONS = new Set([
+  "create", "applyTopology", "connect", "disconnect", "configure", "powerOn", "powerOff", "advance",
+]);
 
 declare global {
   interface Window { nsdlWasmReady?: Promise<WasmBridge> }
@@ -73,7 +76,9 @@ export class BrowserWasmTransport implements SimulationTransport {
   async execute<T = unknown>(op: string, params: Record<string, unknown> = {}): Promise<CommandResult<T>> {
     const bridge = await this.ready;
     const result = JSON.parse(bridge.command(JSON.stringify({ v: 1, op, params }))) as CommandResult<T>;
-    if (result.ok && result.changed) this.listeners.forEach((listener) => listener({ type: "event" }));
+    if (result.ok && result.changed && MUTATING_OPERATIONS.has(op)) {
+      this.listeners.forEach((listener) => listener({ type: "event" }));
+    }
     return result;
   }
 

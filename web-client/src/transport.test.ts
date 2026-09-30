@@ -34,4 +34,15 @@ describe("BrowserWasmTransport", () => {
     expect(selectTransport("?runtime=wasm")).toBeInstanceOf(BrowserWasmTransport);
     expect(selectTransport("?runtime=server")).toBeInstanceOf(RemoteTransport);
   });
+
+  it("does not publish a local change notification for read commands", async () => {
+    const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 2, changed: true, data: [] }));
+    const transport = new BrowserWasmTransport(Promise.resolve({ command }));
+    const listener = vi.fn();
+    transport.subscribe(0, listener);
+
+    await transport.listObjects();
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });
