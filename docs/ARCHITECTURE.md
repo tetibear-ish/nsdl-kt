@@ -21,6 +21,8 @@ sim <- model/net <- link <- ip <- dhcp/device <- app <- nsdl/events/runtime <- i
 - `nsdl` defines topology input; `events` sequences retained event history;
   `runtime` confines mutations to one thread and journals accepted input.
 - `ipc` maps the application API to versioned NDJSON over loopback TCP.
+- `web` adapts the same runtime to HTTP commands and bounded SSE subscriptions;
+  the separate Kotlin/Wasm target runs the portable core directly in a browser.
 - `Composition.kt` is the composition root. It is the only place that chooses
   the scheduler, event hub, registered object types, and runtime concretes.
 
@@ -68,6 +70,19 @@ promiscuously, learn source MAC addresses, forward known unicasts to one port,
 and flood broadcasts and unknown unicasts to every other port. Hosts retain
 normal destination-MAC filtering. Each host-to-switch attachment still uses an
 independent point-to-point cable.
+
+## Browser modes
+
+The server-backed web lab keeps one JVM `SimulationRuntime` authoritative.
+Browsers submit version-1 command envelopes over HTTP and receive the sequenced
+event stream over SSE, so several clients can inspect the same topology. The
+HTTP adapter never mutates simulation objects directly.
+
+The standalone Kotlin/Wasm build shares scheduler, model, link, IP, DHCP,
+device, application, and JSON sources with the JVM build. It replaces only the
+process boundary: commands execute synchronously against a browser-local
+`SimulationService`. It is useful for offline, single-user experimentation;
+the server-backed mode is preferred for shared or persistent sessions.
 
 ## Persistent and volatile state
 

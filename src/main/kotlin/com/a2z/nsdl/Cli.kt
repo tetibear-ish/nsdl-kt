@@ -2,6 +2,7 @@ package com.a2z.nsdl
 
 import com.a2z.nsdl.ipc.IpcClient
 import com.a2z.nsdl.ipc.IpcServer
+import com.a2z.nsdl.web.HttpSimulationServer
 import java.io.InputStream
 import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
@@ -13,6 +14,7 @@ object Cli {
             "example" -> example(args.drop(1), out)
             "demo" -> demo(args.drop(1), out)
             "shell" -> shell(args.drop(1), input, out)
+            "web" -> web(args.drop(1), out)
             else -> usage(err)
         }
     } catch (e: IllegalArgumentException) {
@@ -98,6 +100,34 @@ object Cli {
         }
     }
 
+    private fun web(args: List<String>, out: PrintStream): Int {
+        val options = options(args, setOf("--port", "--seed"))
+        val port = options["--port"]?.toIntOrNull() ?: 8080
+        val seed = options["--seed"]?.toLongOrNull() ?: 0L
+        require(port in 0..65535) { "--port must be between 0 and 65535" }
+
+        val composition = Composition(seed)
+        val server = HttpSimulationServer(composition.runtime, port)
+        val stopped = CountDownLatch(1)
+        val shutdown = Thread {
+            server.stop()
+            composition.close()
+            stopped.countDown()
+        }
+        Runtime.getRuntime().addShutdownHook(shutdown)
+        server.start()
+        out.println("NSDL_WEB_LISTENING url=http://127.0.0.1:${server.port}/")
+        out.flush()
+        try {
+            stopped.await()
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            if (Runtime.getRuntime().removeShutdownHook(shutdown)) shutdown.run()
+        }
+        return 0
+    }
+
     private fun runExample(client: IpcClient, out: PrintStream) {
         fun request(op: String, params: Map<String, Any?> = emptyMap()): Map<String, Any?> {
             val reply = client.request(op, params)
@@ -139,7 +169,7 @@ object Cli {
     }
 
     private fun usage(err: PrintStream): Int {
-        err.println("usage: nsdl serve [--port N] [--seed N] | example --port N | demo | shell [--port N] [--seed N]")
+        err.println("usage: nsdl serve [--port N] [--seed N] | web [--port N] [--seed N] | example --port N | demo | shell [--port N] [--seed N]")
         return 2
     }
 }

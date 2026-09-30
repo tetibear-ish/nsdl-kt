@@ -6,6 +6,7 @@ import com.a2z.nsdl.ip.ReceivedDatagram
 import com.a2z.nsdl.ip.UdpTransport
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.EventSink
+import com.a2z.nsdl.model.hex
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.ObjectSnapshot
@@ -94,7 +95,7 @@ class DhcpClient(
         attempts = 0
         selectedServer = null
         offeredIp = null
-        transition(DhcpClientState.SELECTING, "xid=0x%08x".format(xid))
+        transition(DhcpClientState.SELECTING, "xid=0x${hex(xid.toLong(), 8)}")
         sendDiscover()
     }
 
@@ -191,7 +192,7 @@ class DhcpClient(
         id, PROTOCOL, ObjectKind.PROTOCOL,
         state = mapOf(
             "state" to state.name,
-            "xid" to if (state == DhcpClientState.STOPPED) null else "0x%08x".format(xid),
+            "xid" to if (state == DhcpClientState.STOPPED) null else "0x${hex(xid.toLong(), 8)}",
             "attempts" to attempts,
             "selectedServer" to selectedServer?.toString(),
             "offeredAddress" to offeredIp?.toString(),

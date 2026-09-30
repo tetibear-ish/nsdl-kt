@@ -1,5 +1,7 @@
 package com.a2z.nsdl.ipc.json
 
+import com.a2z.nsdl.model.hex
+
 class JsonParseException(message: String) : Exception(message)
 class JsonWriteException(message: String) : Exception(message)
 
@@ -63,7 +65,7 @@ object Json {
                 c == '\t' -> out.append("\\t")
                 c == '\b' -> out.append("\\b")
                 c == '\u000C' -> out.append("\\f")
-                c.code < 0x20 -> out.append("\\u%04x".format(c.code))
+                c.code < 0x20 -> out.append("\\u").append(hex(c.code.toLong(), 4))
                 else -> out.append(c)
             }
         }
@@ -159,7 +161,7 @@ object Json {
                 when {
                     c == '"' -> return sb.toString()
                     c == '\\' -> sb.append(parseEscape())
-                    c.code < 0x20 -> throw JsonParseException("raw control character (0x%02x) at %d".format(c.code, pos - 1))
+                    c.code < 0x20 -> throw JsonParseException("raw control character (0x${hex(c.code.toLong(), 2)}) at ${pos - 1}")
                     else -> sb.append(c)
                 }
             }

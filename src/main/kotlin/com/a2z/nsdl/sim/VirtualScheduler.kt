@@ -1,6 +1,5 @@
 package com.a2z.nsdl.sim
 
-import java.util.PriorityQueue
 import kotlin.time.Duration
 
 data class AdvanceResult(val now: SimTime, val eventsProcessed: Int, val truncated: Boolean)
@@ -15,7 +14,7 @@ class VirtualScheduler : Scheduler {
         var cancelled = false
     }
 
-    private val queue = PriorityQueue<Entry>(compareBy<Entry>({ it.at }, { it.order }))
+    private val queue = mutableListOf<Entry>()
     private var nextOrder = 0L
 
     override var now: SimTime = SimTime(0)
@@ -25,6 +24,7 @@ class VirtualScheduler : Scheduler {
         require(!delay.isNegative()) { "delay must not be negative" }
         val entry = Entry(now + delay, nextOrder++, action)
         queue += entry
+        queue.sortWith(compareBy<Entry>({ it.at }, { it.order }))
         return Cancellable { entry.cancelled = true }
     }
 
@@ -39,11 +39,11 @@ class VirtualScheduler : Scheduler {
         val target = now + duration
         var processed = 0
         while (true) {
-            val head = queue.peek() ?: break
+            val head = queue.firstOrNull() ?: break
             if (head.at > target) break
-            if (head.cancelled) { queue.poll(); continue }
+            if (head.cancelled) { queue.removeAt(0); continue }
             if (processed >= maxEvents) return AdvanceResult(now, processed, truncated = true)
-            queue.poll()
+            queue.removeAt(0)
             now = head.at
             processed++
             head.action()

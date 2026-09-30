@@ -11,6 +11,10 @@ kotlin {
     jvmToolchain(21)
 }
 
+sourceSets.main {
+    resources.srcDir("web/src/wasmJsMain/resources")
+}
+
 dependencies {
     testImplementation(platform("org.junit:junit-bom:5.11.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")

@@ -3,8 +3,7 @@ package com.a2z.nsdl.app
 import kotlin.time.Duration
 
 /** Reference to an interface exposed by a created object, e.g. "printer.eth0". */
-@JvmInline
-value class EndpointRef(val value: String) {
+data class EndpointRef(val value: String) {
     override fun toString() = value
 }
 

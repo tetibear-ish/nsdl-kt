@@ -1,8 +1,7 @@
 package com.a2z.nsdl.model
 
 /** Stable, human-readable identity of a simulation object (device, interface, cable, protocol component). */
-@JvmInline
-value class ObjectId(val value: String) {
+data class ObjectId(val value: String) {
     init { require(value.matches(PATTERN)) { "invalid object id '$value'" } }
     fun child(name: String) = ObjectId("$value.$name")
     override fun toString() = value

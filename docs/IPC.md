@@ -118,3 +118,20 @@ Malformed JSON and invalid parameter shapes use `INVALID_REQUEST`. Unknown
 operations use `UNKNOWN_OP`, and any version other than `1` uses
 `UNSUPPORTED_VERSION`. Unexpected runtime exceptions are contained and returned
 as `INTERNAL`; the simulation thread remains available.
+
+## HTTP and browser event transport
+
+Running `web --port 8080` serves the browser client and two loopback HTTP
+endpoints. `POST /api/command` accepts one version-1 request object using the
+same envelope, operations, results, and errors documented above. Subscription
+operations are not accepted on this endpoint.
+
+`GET /api/events?from=REVISION` opens a `text/event-stream`. Each SSE `data`
+field contains the same event or gap JSON object used by the NDJSON transport.
+A stale revision returns HTTP 409 with a `CURSOR_EXPIRED` error. Browser clients
+should reconnect using the last applied sequence, and re-snapshot if they
+receive a gap or expired cursor.
+
+The HTTP listener, like the TCP listener, binds only to `127.0.0.1`. It has no
+authentication and is not intended to be exposed directly to an untrusted
+network.

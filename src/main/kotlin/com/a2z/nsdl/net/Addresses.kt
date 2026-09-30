@@ -1,10 +1,11 @@
 package com.a2z.nsdl.net
 
-@JvmInline
-value class MacAddress(val bits: Long) {
+import com.a2z.nsdl.model.hex
+
+data class MacAddress(val bits: Long) {
     init { require(bits in 0..0xFFFF_FFFF_FFFFL) { "MAC out of range" } }
     val isBroadcast get() = this == BROADCAST
-    override fun toString() = (5 downTo 0).joinToString(":") { "%02x".format((bits shr (it * 8)) and 0xFF) }
+    override fun toString() = (5 downTo 0).joinToString(":") { hex((bits shr (it * 8)) and 0xFF, 2) }
 
     companion object {
         val BROADCAST = MacAddress(0xFFFF_FFFF_FFFFL)
@@ -18,8 +19,7 @@ value class MacAddress(val bits: Long) {
     }
 }
 
-@JvmInline
-value class Ipv4Address(val bits: Int) {
+data class Ipv4Address(val bits: Int) {
     val isBroadcast get() = this == BROADCAST
     val isUnspecified get() = this == ANY
     operator fun plus(n: Int) = Ipv4Address(bits + n)

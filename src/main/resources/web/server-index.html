@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NSDL Network Lab</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Shared JVM simulation</p>
+      <h1>NSDL Network Lab</h1>
+    </div>
+    <button id="demo" type="button">Load DHCP demo</button>
+  </header>
+  <main>
+    <section class="panel topology-panel">
+      <div class="panel-title"><h2>Topology</h2><span id="revision">revision 0</span></div>
+      <svg id="topology" role="img" aria-label="Network topology graph"></svg>
+      <p id="empty">Create objects in the console to graph your network.</p>
+    </section>
+    <section class="panel console-panel">
+      <div class="panel-title"><h2>CLI</h2><button id="clear" class="quiet" type="button">Clear</button></div>
+      <pre id="output" aria-live="polite"></pre>
+      <form id="command-form">
+        <label for="command">nsdl&gt;</label>
+        <input id="command" autocomplete="off" spellcheck="false" placeholder="type help" autofocus>
+        <button type="submit">Run</button>
+      </form>
+    </section>
+  </main>
+  <script src="app.js"></script>
+  <script src="remote.js"></script>
+</body>
+</html>

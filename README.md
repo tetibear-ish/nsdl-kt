@@ -35,6 +35,12 @@ nix develop --command ./gradlew run --args='shell --seed 7'
 
 # Or attach the shell to an already-running NSDL server.
 nix develop --command ./gradlew run --args='shell --port 54321'
+
+# Start the shared JVM simulation with its browser graph and CLI.
+nix develop --command ./gradlew run --args='web --port 8080 --seed 7'
+
+# Build the standalone Kotlin/Wasm site.
+nix develop --command ./gradlew :web:wasmJsBrowserDistribution --offline
 ```
 
 `serve` prints `NSDL_IPC_LISTENING port=N` once it is ready. The transport is
@@ -46,6 +52,12 @@ Inside the shell, type `help` to see commands. Objects can be created with
 `connect CABLE ENDPOINT_A ENDPOINT_B`, powered on, advanced through virtual
 time, listed, and inspected. For example, an `ethernet-switch` exposes
 `switch1.port1` through `switch1.port4`.
+
+The `web` command serves the UI at `http://127.0.0.1:8080/`. Commands use the
+same versioned request model as IPC, and topology changes stream to every open
+browser over server-sent events. The standalone Wasm distribution runs the
+same simulation core entirely in the browser and is written to
+`web/build/dist/wasmJs/productionExecutable`.
 
 ## Documentation
 

@@ -3,6 +3,7 @@ package com.a2z.nsdl.dhcp
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.net.UdpPayload
+import com.a2z.nsdl.model.hex
 
 enum class BootOp { REQUEST, REPLY }
 
@@ -31,7 +32,7 @@ data class DhcpMessage(
     val router: Ipv4Address? = null,
 ) : UdpPayload {
     override fun describe(): String = buildString {
-        append("DHCP").append(type).append(" xid=0x%08x".format(xid)).append(" chaddr=").append(chaddr)
+        append("DHCP").append(type).append(" xid=0x").append(hex(xid.toLong(), 8)).append(" chaddr=").append(chaddr)
         if (!yiaddr.isUnspecified) append(" yiaddr=").append(yiaddr)
         requestedIp?.let { append(" requested=").append(it) }
         serverId?.let { append(" server=").append(it) }

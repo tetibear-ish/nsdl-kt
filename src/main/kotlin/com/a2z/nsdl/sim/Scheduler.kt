@@ -3,8 +3,7 @@ package com.a2z.nsdl.sim
 import kotlin.time.Duration
 
 /** A point in virtual simulation time, in milliseconds since the simulation started. */
-@JvmInline
-value class SimTime(val millis: Long) : Comparable<SimTime> {
+data class SimTime(val millis: Long) : Comparable<SimTime> {
     operator fun plus(d: Duration): SimTime = SimTime(millis + d.inWholeMilliseconds)
     override fun compareTo(other: SimTime): Int = millis.compareTo(other.millis)
     override fun toString(): String = "t=${millis}ms"
