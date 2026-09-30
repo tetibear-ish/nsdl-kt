@@ -17,6 +17,8 @@ import { AddObjectDialog } from "./AddObjectDialog";
 import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
+import { useClockTimeStore } from "./clockStore";
+import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { NetworkNode } from "./NetworkNode";
 import { inspectionIds } from "./inspector";
 import {
@@ -78,7 +80,21 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       setStatus(`${result.error.code}: ${result.error.message}`);
       return 0;
     }
-    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); });
+    const dhcpServices = result.data.flatMap((snapshot) =>
+      (snapshot.relations.services ?? [])
+        .filter((serviceId) => serviceId.endsWith(".dhcp-client"))
+        .map((serviceId) => ({ deviceId: snapshot.id, serviceId })),
+    );
+    const dhcpResults = await Promise.all(
+      dhcpServices.map(({ serviceId }) => transport.execute<ObjectSnapshot>("inspect", { id: serviceId })),
+    );
+    const dhcpLeases = Object.fromEntries(
+      dhcpServices.flatMap(({ deviceId }, index) => {
+        const leaseResult = dhcpResults[index];
+        return leaseResult.ok ? [[deviceId, leaseResult.data] as const] : [];
+      }),
+    );
+    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); }, dhcpLeases);
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
       const before = powerStates.current[node.id];
@@ -127,8 +143,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   }, []);
 
   useEffect(() => {
-    setClock(transport.getClock());
-    return transport.onClockChange(setClock);
+    const apply = (state: ClockState) => { setClock(state); useClockTimeStore.getState().setNowMs(state.nowMs); };
+    apply(transport.getClock());
+    return transport.onClockChange(apply);
   }, [transport]);
 
   const toggleClock = useCallback(() => {
@@ -394,7 +411,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           : inspected.map((snapshot) => (
             <section key={snapshot.id}>
               <h3>{snapshot.id}</h3>
-              <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>
+              {snapshot.type === "dhcp-client"
+                ? <DhcpLeasePanel snapshot={snapshot} nowMs={clock.nowMs} />
+                : <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>}
             </section>
           ))}
         {inspected[0]?.kind === "CABLE" && <>

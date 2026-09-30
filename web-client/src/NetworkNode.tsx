@@ -1,11 +1,16 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useActivityStore } from "./activityStore";
+import { formatVirtualTime } from "./clock";
+import { useClockTimeStore } from "./clockStore";
+import { dhcpStatusClass, parseDhcpLease } from "./dhcpLease";
 import type { NetworkNode as NetworkNodeType } from "./topology";
 
 export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
   const power = String(data.snapshot.state.power ?? "OFF");
   const split = Math.ceil(data.ports.length / 2);
   const pulses = useActivityStore((state) => state.pulses);
+  const nowMs = useClockTimeStore((state) => state.nowMs);
+  const lease = data.dhcpLease ? parseDhcpLease(data.dhcpLease, nowMs) : null;
 
   return (
     <article className={`network-node power-${power.toLowerCase()}`} aria-label={`${data.snapshot.id} ${power}`}>
@@ -13,6 +18,12 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
       <strong>{data.snapshot.id}</strong>
       <span>{data.snapshot.type}</span>
       <small>{power}</small>
+      {lease?.address && (
+        <small className={`node-dhcp ${dhcpStatusClass(lease)}`}>
+          {lease.address}
+          {lease.remainingMs !== null && ` · ${formatVirtualTime(lease.remainingMs)}`}
+        </small>
+      )}
       <button
         className="node-power nodrag nopan"
         onClick={(event) => { event.stopPropagation(); data.onPowerToggle?.(data.snapshot); }}

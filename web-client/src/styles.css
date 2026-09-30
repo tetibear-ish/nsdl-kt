@@ -30,6 +30,16 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .inspector p { color: #718ba2; font-size: 13px; }
 .inspector pre { margin: 0; overflow: auto; white-space: pre-wrap; color: #c2d4e4; font: 11px/1.5 ui-monospace, monospace; }
 .inspector button { width: 100%; margin-top: 14px; }
+.dhcp-status { margin: 0 0 8px; padding: 3px 8px; display: inline-block; border-radius: 6px; font: 700 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; }
+.dhcp-status.dhcp-bound { color: #5de4d1; background: rgba(93,228,209,.14); }
+.dhcp-status.dhcp-renewing, .dhcp-status.dhcp-rebinding { color: #ffc96b; background: rgba(255,201,107,.14); }
+.dhcp-status.dhcp-expired { color: #ff9297; background: rgba(255,146,151,.14); }
+.dhcp-status.dhcp-unconfigured { color: #718ba2; background: rgba(113,139,162,.12); }
+.dhcp-lease { margin: 0 0 12px; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
+.dhcp-lease dt { color: #718ba2; }
+.dhcp-lease dd { margin: 0; color: #dce9f6; font: 12px ui-monospace, monospace; }
+.inspector details { margin-top: 4px; }
+.inspector summary { cursor: pointer; color: #718ba2; font-size: 12px; }
 @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 180px; } .inspector { border-top: 1px solid #29445f; border-left: 0; } }
 .react-flow { background: transparent; }
 .network-node { position: relative; display: grid; min-width: 172px; padding: 17px 24px; border: 2px solid #587087; border-radius: 14px; background: #10253a; box-shadow: 0 14px 30px rgba(0,0,0,.3); text-align: center; }
@@ -37,6 +47,10 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node span { color: #8da5ba; font: 11px ui-monospace, monospace; }
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
+.network-node .node-dhcp { display: block; color: #5b7a94; font-weight: 400; letter-spacing: normal; }
+.network-node .node-dhcp.dhcp-bound { color: #5de4d1; }
+.network-node .node-dhcp.dhcp-renewing, .network-node .node-dhcp.dhcp-rebinding { color: #ffc96b; }
+.network-node .node-dhcp.dhcp-expired { color: #ff9297; }
 .network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
 .network-node.power-booting { border-color: #ffc96b; }
 .node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }

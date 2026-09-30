@@ -11,6 +11,7 @@ export type NetworkNodeData = Record<string, unknown> & {
   snapshot: ObjectSnapshot;
   ports: PortView[];
   onPowerToggle?: (snapshot: ObjectSnapshot) => void;
+  dhcpLease?: ObjectSnapshot;
 };
 
 export type NetworkNode = Node<NetworkNodeData, "network">;
@@ -28,6 +29,7 @@ export function projectTopology(
   snapshots: ObjectSnapshot[],
   positions: Record<string, XYPosition> = {},
   onPowerToggle?: (snapshot: ObjectSnapshot) => void,
+  dhcpLeases: Record<string, ObjectSnapshot> = {},
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
@@ -44,6 +46,7 @@ export function projectTopology(
     data: {
       snapshot,
       onPowerToggle,
+      dhcpLease: dhcpLeases[snapshot.id],
       ports: (snapshot.relations.interfaces ?? []).map((id) => ({
         id,
         name: id.slice(snapshot.id.length + 1),

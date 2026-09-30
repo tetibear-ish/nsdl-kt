@@ -45,4 +45,28 @@ describe("projectTopology", () => {
       }),
     ]);
   });
+
+  it("attaches a device's dhcp lease snapshot to its node data when provided", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["printer1.eth0"] } },
+    ];
+    const lease: ObjectSnapshot = {
+      id: "printer1.dhcp-client", type: "dhcp-client", kind: "PROTOCOL",
+      state: { state: "BOUND", offeredAddress: "10.0.0.100" }, relations: {},
+    };
+
+    const projected = projectTopology(snapshots, {}, undefined, { printer1: lease });
+
+    expect(projected.nodes[0].data.dhcpLease).toBe(lease);
+  });
+
+  it("leaves dhcpLease unset for a device with no lease entry", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: {} },
+    ];
+
+    const projected = projectTopology(snapshots);
+
+    expect(projected.nodes[0].data.dhcpLease).toBeUndefined();
+  });
 });
