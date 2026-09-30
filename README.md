@@ -29,11 +29,23 @@ nix develop --command ./gradlew run --args='example --port 54321'
 
 # Start an in-process server and run the same example against it.
 nix develop --command ./gradlew run --args=demo
+
+# Open an interactive, in-memory network lab.
+nix develop --command ./gradlew run --args='shell --seed 7'
+
+# Or attach the shell to an already-running NSDL server.
+nix develop --command ./gradlew run --args='shell --port 54321'
 ```
 
 `serve` prints `NSDL_IPC_LISTENING port=N` once it is ready. The transport is
 newline-delimited JSON over TCP on `127.0.0.1`; it is intended as a local
 process boundary, not an authenticated network service.
+
+Inside the shell, type `help` to see commands. Objects can be created with
+`create TYPE ID [PROPERTY=VALUE ...]`, connected with a cable using
+`connect CABLE ENDPOINT_A ENDPOINT_B`, powered on, advanced through virtual
+time, listed, and inspected. For example, an `ethernet-switch` exposes
+`switch1.port1` through `switch1.port4`.
 
 ## Documentation
 

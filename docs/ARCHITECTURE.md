@@ -63,6 +63,12 @@ disconnected or reconnected before arrival, and as `RECEIVER_DISABLED` if its
 receiver powers off. Other drops include `LINK_DOWN`, `NOT_FOR_US`, and
 `NO_LISTENER`.
 
+The four-port `ethernet-switch` is a powered learning bridge. Its ports receive
+promiscuously, learn source MAC addresses, forward known unicasts to one port,
+and flood broadcasts and unknown unicasts to every other port. Hosts retain
+normal destination-MAC filtering. Each host-to-switch attachment still uses an
+independent point-to-point cable.
+
 ## Persistent and volatile state
 
 Persistent object configuration, such as boot time, MAC address, static IP,

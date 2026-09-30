@@ -25,14 +25,14 @@ class CompositionTest {
     }
 
     @Test
-    fun `the composed runtime registers printer, dhcp-server-host and cat5-cable`() {
+    fun `the composed runtime registers all built-in network object types`() {
         val c = newComposition()
         val result = c.runtime.submit(Request(Command.ListTypes))
 
         assertTrue(result.result is CommandResult.Ok)
         @Suppress("UNCHECKED_CAST")
         val names = ((result.result as CommandResult.Ok).data as List<ObjectTypeSchema>).map { it.name }.toSet()
-        assertEquals(setOf("printer", "dhcp-server-host", "cat5-cable"), names)
+        assertEquals(setOf("printer", "dhcp-server-host", "ethernet-switch", "cat5-cable"), names)
     }
 
     @Test

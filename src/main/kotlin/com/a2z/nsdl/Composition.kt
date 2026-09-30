@@ -3,6 +3,7 @@ package com.a2z.nsdl
 import com.a2z.nsdl.app.TypeRegistry
 import com.a2z.nsdl.app.types.Cat5CableType
 import com.a2z.nsdl.app.types.DhcpServerHostType
+import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.runtime.SimulationRuntime
@@ -19,6 +20,7 @@ class Composition(randomSeed: Long = System.nanoTime()) {
     val registry = TypeRegistry().apply {
         register(PrinterType)
         register(DhcpServerHostType)
+        register(EthernetSwitchType)
         register(Cat5CableType)
     }
     val runtime = SimulationRuntime(scheduler, eventHub, registry, randomSeed = randomSeed)

@@ -2,15 +2,17 @@ package com.a2z.nsdl
 
 import com.a2z.nsdl.ipc.IpcClient
 import com.a2z.nsdl.ipc.IpcServer
+import java.io.InputStream
 import java.io.PrintStream
 import java.util.concurrent.CountDownLatch
 
 object Cli {
-    fun run(args: Array<String>, out: PrintStream, err: PrintStream): Int = try {
+    fun run(args: Array<String>, out: PrintStream, err: PrintStream, input: InputStream = System.`in`): Int = try {
         when (args.firstOrNull()) {
             "serve" -> serve(args.drop(1), out)
             "example" -> example(args.drop(1), out)
             "demo" -> demo(args.drop(1), out)
+            "shell" -> shell(args.drop(1), input, out)
             else -> usage(err)
         }
     } catch (e: IllegalArgumentException) {
@@ -69,6 +71,33 @@ object Cli {
         }
     }
 
+    private fun shell(args: List<String>, input: InputStream, out: PrintStream): Int {
+        val options = options(args, setOf("--port", "--seed"))
+        val requestedPort = options["--port"]?.let {
+            it.toIntOrNull() ?: throw IllegalArgumentException("--port must be an integer")
+        }
+        val seed = options["--seed"]?.let {
+            it.toLongOrNull() ?: throw IllegalArgumentException("--seed must be an integer")
+        } ?: 0L
+        require(requestedPort == null || requestedPort in 1..65535) { "--port must be between 1 and 65535" }
+
+        if (requestedPort != null) {
+            IpcClient("127.0.0.1", requestedPort).use { InteractiveShell(it, input, out).run() }
+            return 0
+        }
+
+        val composition = Composition(seed)
+        val server = IpcServer(composition.runtime, 0)
+        server.start()
+        return try {
+            IpcClient("127.0.0.1", server.port).use { InteractiveShell(it, input, out).run() }
+            0
+        } finally {
+            server.stop()
+            composition.close()
+        }
+    }
+
     private fun runExample(client: IpcClient, out: PrintStream) {
         fun request(op: String, params: Map<String, Any?> = emptyMap()): Map<String, Any?> {
             val reply = client.request(op, params)
@@ -110,7 +139,7 @@ object Cli {
     }
 
     private fun usage(err: PrintStream): Int {
-        err.println("usage: nsdl serve [--port N] [--seed N] | example --port N | demo")
+        err.println("usage: nsdl serve [--port N] [--seed N] | example --port N | demo | shell [--port N] [--seed N]")
         return 2
     }
 }

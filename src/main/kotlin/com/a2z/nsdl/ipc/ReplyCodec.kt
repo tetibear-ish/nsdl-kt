@@ -1,9 +1,13 @@
 package com.a2z.nsdl.ipc
 
 import com.a2z.nsdl.app.CommandError
+import com.a2z.nsdl.app.ObjectTypeSchema
 import com.a2z.nsdl.events.EventRecord
 import com.a2z.nsdl.ipc.json.Json
+import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.ObjectSnapshot
+import com.a2z.nsdl.net.Ipv4Address
+import com.a2z.nsdl.net.MacAddress
 
 /** Builds the NDJSON lines the server pushes: result/error replies and event/gap pushes. */
 object ReplyCodec {
@@ -38,7 +42,24 @@ object ReplyCodec {
             "state" to value.state,
             "relations" to value.relations.mapValues { (_, ids) -> ids.map { it.value } },
         )
+        is ObjectTypeSchema -> mapOf(
+            "name" to value.name,
+            "kind" to value.kind.name,
+            "properties" to value.properties.map { property ->
+                mapOf(
+                    "name" to property.name,
+                    "type" to property.type.name,
+                    "required" to property.required,
+                    "default" to toWireData(property.default),
+                    "mutable" to property.mutable,
+                    "description" to property.description,
+                )
+            },
+            "interfaces" to value.interfaces.map { mapOf("name" to it.name, "media" to it.media.name) },
+        )
         is List<*> -> value.map { toWireData(it) }
+        is Ipv4Address, is MacAddress -> value.toString()
+        is LinkProfile -> value.name
         else -> value
     }
 }
