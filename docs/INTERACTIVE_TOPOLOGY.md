@@ -14,6 +14,8 @@ The topology editor should support these interactions:
 - An eight-port switch visibly exposes eight independent connection points.
 - Users disconnect a cable by grabbing its endpoint and dragging it away from
   the node.
+- Each connected endpoint has an activity light that flashes when its interface
+  emits or receives a frame or packet.
 - Users can inspect every object and see its configuration, power state,
   interfaces, connections, and relevant protocol state.
 - Multiple users can open the same server-hosted topology, modify it
@@ -331,6 +333,68 @@ after the drop. Do not add the visual edge until the command succeeds.
 Port handles should distinguish free, occupied, link-down, link-up, and invalid
 drag-target states.
 
+## Port activity lights
+
+Every connected endpoint should render a small activity light adjacent to its
+handle. The light represents activity at that specific simulated interface,
+not generic animation along the whole cable.
+
+The existing event stream already provides the necessary source information:
+
+- `FrameSent` flashes the transmitting endpoint.
+- `FrameReceived` flashes the receiving endpoint.
+- `PacketAccepted` may optionally produce a second, visually distinct protocol
+  pulse, but it must not be counted as another physical frame.
+- `FrameDropped` may briefly flash an error color at the interface or cable
+  that reported the drop.
+
+For a successful exchange, users should therefore see the source-side light
+flash when the frame is emitted and the destination-side light flash when the
+frame arrives after the simulated propagation delay. Both server-backed and
+Wasm transports must deliver the same event-to-port behavior.
+
+Activity indication is presentation state and must not be written back into
+the deterministic simulation. The React client should maintain a transient map
+such as:
+
+```ts
+type PortActivity = Record<string, {
+  sentAt?: number;
+  receivedAt?: number;
+  droppedAt?: number;
+}>;
+```
+
+Event `source` IDs map directly to React Flow handle IDs, for example
+`switch1.port3`. An incoming event updates that handle's transient activity
+state and starts a short CSS animation.
+
+Recommended visual behavior:
+
+- Sent frame: bright amber pulse.
+- Received frame: bright cyan pulse.
+- Dropped frame: short red pulse.
+- Operational but idle link: dim green or cyan.
+- Link down: unlit gray.
+- Disconnected port: no activity light or an empty socket treatment.
+
+Use a 120–250 ms pulse measured in browser wall-clock time. Simulation time may
+advance by several seconds in one command, so tying animation duration directly
+to virtual time would make activity invisible. Preserve event order, but queue
+or coalesce bursts per animation frame so a large virtual-time advance cannot
+create thousands of DOM animations or freeze the editor. A sustained burst may
+hold the light bright and decay after the last event.
+
+The visualizer must continue consuming events even when animation is disabled.
+Respect `prefers-reduced-motion` by replacing pulses with a brief color/intensity
+change, and never rely on color alone: inspection details should expose sent,
+received, and dropped counters per port.
+
+For multi-user server mode, these activity events already come from the shared
+sequenced SSE stream, so every connected client observes the same simulated
+traffic. Animation start time can differ slightly by browser delivery latency;
+event sequence and counters remain authoritative.
+
 ## Disconnecting and reconnecting
 
 Use React Flow's edge reconnection gesture. A user grabs an existing edge
@@ -421,8 +485,11 @@ alternative ecosystem.
 8. Add power toggling and event-driven state styling.
 9. Add atomic cable creation through handle dragging.
 10. Add reconnect/disconnect-on-empty-drop behavior.
-11. Add context menus, inspection panels, keyboard paths, and accessibility
+11. Add event-driven per-port transmit, receive, and drop activity lights with
+    burst coalescing and reduced-motion behavior.
+12. Add context menus, inspection panels, keyboard paths, and accessibility
    checks.
-12. Add a two-browser Playwright test proving that creation, power, movement,
+13. Add a two-browser Playwright test proving that creation, power, movement,
     connection, and disconnection in one client update the other client.
-13. Add Playwright coverage for the complete printer-switch-gateway DHCP flow.
+14. Add Playwright coverage for the complete printer-switch-gateway DHCP flow,
+    including activity at both ends of each traversed connection.
