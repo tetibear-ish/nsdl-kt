@@ -32,3 +32,12 @@ export function tickDuration(state: ClockState, elapsedRealMs: number): number {
   if (state.mode === "paused" || elapsedRealMs <= 0) return 0;
   return elapsedRealMs * state.speed;
 }
+
+/** Renders a virtual-time offset as "12.3s" under a minute, or "1:05.0" from a minute up. */
+export function formatVirtualTime(ms: number): string {
+  const totalSeconds = ms / 1000;
+  if (totalSeconds < 60) return `${totalSeconds.toFixed(1)}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds - minutes * 60;
+  return `${minutes}:${seconds.toFixed(1).padStart(4, "0")}`;
+}

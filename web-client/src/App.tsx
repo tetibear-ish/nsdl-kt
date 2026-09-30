@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddObjectDialog } from "./AddObjectDialog";
 import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
+import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
 import { NetworkNode } from "./NetworkNode";
 import { inspectionIds } from "./inspector";
 import {
@@ -32,6 +33,7 @@ import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
 import { UndoStack } from "./undoStack";
 
 const UNDO_CAPACITY = 50;
+const STEP_DURATION_MS = 100;
 
 const nodeTypes = { network: NetworkNode };
 const defaultTransport = selectTransport();
@@ -55,6 +57,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const removeRecord = useEditorStore((state) => state.removeRecord);
   const importInput = useRef<HTMLInputElement | null>(null);
   const undoStack = useRef(new UndoStack(UNDO_CAPACITY));
+  const [clock, setClock] = useState<ClockState>(INITIAL_CLOCK_STATE);
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -122,6 +125,17 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const interval = setInterval(() => useActivityStore.getState().prune(), 100);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    setClock(transport.getClock());
+    return transport.onClockChange(setClock);
+  }, [transport]);
+
+  const toggleClock = useCallback(() => {
+    if (clock.mode === "running") transport.pauseClock(); else transport.resumeClock();
+  }, [clock.mode, transport]);
+
+  const step = useCallback(() => { void transport.step(STEP_DURATION_MS); }, [transport]);
 
   const onConnect = useCallback(async (connection: Connection) => {
     if (!connection.sourceHandle || !connection.targetHandle) return;
@@ -293,6 +307,19 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <div><span>NSDL</span><strong>Topology Lab</strong></div>
         <div className="toolbar-actions">
           <output>{status}</output>
+          <div className="clock-controls" aria-label="Simulation clock">
+            <span className="clock-time">{formatVirtualTime(clock.nowMs)}</span>
+            <span className="clock-drive-mode">{transport.driveMode === "browser" ? "browser-driven" : "server-driven"}</span>
+            <button className="secondary" onClick={toggleClock}>{clock.mode === "running" ? "Pause" : "Resume"}</button>
+            <button className="secondary" disabled={clock.mode === "running"} onClick={step}>Step</button>
+            {CLOCK_SPEEDS.map((speed) => (
+              <button
+                key={speed}
+                className={clock.speed === speed ? "secondary active" : "secondary"}
+                onClick={() => transport.setClockSpeed(speed)}
+              >{speed}×</button>
+            ))}
+          </div>
           <button onClick={() => openAddAt()}>Add…</button>
           <button className="secondary" onClick={() => { void undo(); }}>Undo</button>
           <DropdownMenu.Root>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INITIAL_CLOCK_STATE, observeNow, pause, resume, setSpeed, tickDuration } from "./clock";
+import { formatVirtualTime, INITIAL_CLOCK_STATE, observeNow, pause, resume, setSpeed, tickDuration } from "./clock";
 
 describe("pause and resume", () => {
   it("starts running by default", () => {
@@ -63,5 +63,17 @@ describe("tickDuration: elapsed-time accounting", () => {
   it("requests nothing for zero or negative elapsed time", () => {
     expect(tickDuration(INITIAL_CLOCK_STATE, 0)).toBe(0);
     expect(tickDuration(INITIAL_CLOCK_STATE, -10)).toBe(0);
+  });
+});
+
+describe("formatVirtualTime", () => {
+  it("formats sub-minute durations as seconds with one decimal", () => {
+    expect(formatVirtualTime(0)).toBe("0.0s");
+    expect(formatVirtualTime(12_300)).toBe("12.3s");
+  });
+
+  it("formats durations of a minute or more as m:ss.s", () => {
+    expect(formatVirtualTime(65_000)).toBe("1:05.0");
+    expect(formatVirtualTime(3_661_200)).toBe("61:01.2");
   });
 });
