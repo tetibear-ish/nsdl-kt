@@ -16,6 +16,8 @@ The topology editor should support these interactions:
   the node.
 - Users can inspect every object and see its configuration, power state,
   interfaces, connections, and relevant protocol state.
+- Multiple users can open the same server-hosted topology, modify it
+  concurrently, and see accepted changes appear in every connected client.
 - The visualizer should work with both the shared JVM simulation and the
   standalone Kotlin/Wasm simulation.
 
@@ -29,8 +31,9 @@ Use a React and TypeScript frontend built with Vite and React Flow:
   selection, panning, zooming, and edge reconnection.
 - **Radix UI** for accessible context menus, dropdown menus, dialogs, and
   tooltips.
-- **Zustand** for transient editor state such as viewport, selection, menus,
-  pending gestures, and locally persisted node positions.
+- **Zustand** for transient per-client editor state such as viewport, selection,
+  menus, and pending gestures. Shared node positions belong to the server
+  workspace rather than this local store.
 - The existing **Kotlin JVM runtime with HTTP commands and SSE events** for
   shared simulations.
 - A **Kotlin/Wasm transport adapter** for standalone browser-local simulations.
@@ -74,10 +77,155 @@ Components should receive this interface through application context. They
 must not contain transport-specific branching. Both implementations should
 produce the same snapshots, structured errors, revisions, and event records.
 
-The JVM runtime remains authoritative in server mode. Graph mutations are
-displayed only after the command is accepted. SSE events update all connected
-browsers. In standalone mode, the Wasm adapter applies commands to its local
-simulation and publishes equivalent updates to the editor.
+The JVM runtime remains authoritative in server mode and must support
+concurrent clients. Transport handler threads may submit simultaneously, but
+the runtime orders and executes every accepted mutation on its single
+simulation thread. Graph mutations are displayed only after the command is
+accepted. SSE events update all connected browsers. In standalone mode, the
+Wasm adapter applies commands to its local simulation and publishes equivalent
+updates to the editor.
+
+## Multi-user collaboration
+
+The server-hosted editor is a shared workspace. Every browser connected to the
+same workspace observes and modifies the same simulation and topology layout.
+This is distinct from standalone Wasm mode, where each browser owns an isolated
+local simulation.
+
+### Current implementation status
+
+The existing server mode already provides part of this behavior:
+
+- Multiple TCP or HTTP client threads can submit concurrently to one
+  authoritative `SimulationRuntime`; its executor serializes commands into a
+  deterministic accepted order.
+- Runtime subscriptions are also established through that execution boundary,
+  preventing a snapshot-to-subscription race.
+- Accepted simulation mutations produce globally sequenced events.
+- The HTTP server broadcasts those events through SSE subscriptions.
+- The current browser client refreshes its graph when an SSE event arrives.
+- Snapshot revisions and replay cursors allow a reconnecting client to catch up
+  without missing retained simulation events.
+
+This means object creation, power changes, configuration, connections,
+disconnections, and virtual-time advancement can already update multiple open
+clients. However, client request IDs are not yet safely scoped: independent
+clients can both generate values such as `c1` or `web-1`, while the runtime's
+idempotency cache is global. Before treating the service as fully multi-client,
+request identity must be globally unique or keyed by `(clientId, requestId)`.
+
+Shared node coordinates, user presence, selections, and drag previews are also
+**not** currently synchronized. The present graph computes its layout in each
+browser independently.
+
+### Runtime concurrency contract
+
+`SimulationRuntime` is the concurrency boundary for all authoritative changes.
+It should explicitly guarantee:
+
+- `submit` is safe to call concurrently from any number of transport threads.
+- Each command executes to completion before the next command begins.
+- Results, journal entries, randomness draws, events, and revisions reflect one
+  deterministic total accepted order.
+- Validation and mutation occur together on the runtime thread, so two clients
+  cannot both reserve the same endpoint or object ID.
+- `subscribe` is ordered with commands on the runtime thread, preserving the
+  snapshot-plus-subscribe-from-revision guarantee.
+- One client's malformed request, rejection, disconnect, or slow event consumer
+  cannot block or terminate the runtime or another client.
+- Idempotency is scoped by a server-issued `clientId` plus caller request ID, or
+  callers use collision-resistant request IDs such as UUIDs.
+
+The preferred protocol identity is:
+
+```text
+RequestIdentity(clientId, requestId)
+```
+
+Reconnects may retain the same `clientId` when they intend to retry earlier
+requests. Two different clients using the same local `requestId` must never
+share a cached result or cause `IDEMPOTENCY_CONFLICT`.
+
+### Shared workspace state
+
+Keep behavioral simulation state inside `SimulationRuntime`, and add a small
+server-owned workspace state for visual topology metadata. Its mutations must
+also pass through the runtime execution boundary (or an equivalently ordered
+workspace command queue); it must not be an independently mutated map beside
+the runtime:
+
+```ts
+type SharedWorkspace = {
+  workspaceId: string;
+  layoutRevision: number;
+  positions: Record<string, { x: number; y: number }>;
+};
+```
+
+Node coordinates must be stored centrally so moving a node in one browser
+moves it in every other browser. Viewport, zoom, current selection, open menus,
+and unfinished connection gestures remain local because they describe an
+individual user's view rather than the topology itself.
+
+The server should expose explicit layout operations rather than treating
+coordinates as simulation configuration:
+
+```text
+MoveObject(objectId, x, y, baseLayoutRevision)
+MoveObjects([{ objectId, x, y }], baseLayoutRevision)
+```
+
+Accepted moves increment `layoutRevision` and publish a `LayoutChanged` event.
+Drag updates should be throttled, with one final unthrottled update on pointer
+release. A multi-object move should be atomic.
+
+### Command and conflict rules
+
+Clients may optimistically show a pending gesture, but authoritative graph
+state changes only after server acceptance. Each request needs a unique
+`(clientId, requestId)` identity so retries remain idempotent without colliding
+with another client.
+
+Concurrent simulation commands use the runtime's serial accepted order and
+existing validation rules:
+
+- Two users creating the same ID: one succeeds; the other receives
+  `DUPLICATE_ID`.
+- Two users connecting the same free port: the first accepted command wins;
+  the other receives `ENDPOINT_OCCUPIED`.
+- Power controls send explicit `PowerOn` or `PowerOff`, never a server-side
+  `TogglePower`, so a stale client cannot accidentally invert newer state.
+- Disconnecting an already disconnected cable remains an idempotent no-op.
+
+Layout updates should use `baseLayoutRevision`. A stale move can either be
+rejected with a dedicated conflict result or use documented last-accepted-write
+semantics. Rejection is preferred for the final pointer-up update because it
+lets the client resnapshot instead of silently overwriting a newer placement.
+
+### Client synchronization
+
+On initial load or reconnect, a remote client should:
+
+1. Fetch the simulation snapshot, shared layout, and their revisions.
+2. Render that combined state.
+3. Subscribe from the returned event cursor.
+4. Apply simulation and layout events in sequence.
+5. If it receives `CURSOR_EXPIRED` or a gap, discard optimistic state and take
+   a fresh combined snapshot.
+
+Every accepted add, power, configure, connect, disconnect, move, or delete
+operation must therefore be visible in every subscribed client without a page
+reload. Events should carry an optional `actorId` so the initiating client can
+match its pending gesture while other clients can identify remote activity.
+
+### Presence
+
+Presence is useful but not required for correct shared editing. A later
+ephemeral channel may publish user name/color, cursor, selected objects, and
+the object currently being dragged. Presence must not enter the deterministic
+simulation journal and should expire automatically when a client disconnects.
+It should never lock an object indefinitely; at most it provides short-lived
+advisory drag ownership.
 
 ## Graph projection
 
@@ -109,9 +257,9 @@ type TopologyEdge = {
 
 Simulation state and editor layout state should remain separate. Power,
 configuration, endpoints, and cable attachment come from NSDL snapshots and
-events. Node coordinates, viewport, selection, and open menus belong to the
-editor. Positions may be stored locally at first and added to a topology
-workspace format later.
+events. In server mode, node coordinates come from the shared workspace and
+its layout events. Viewport, selection, open menus, and pending gestures remain
+local to each editor. Standalone Wasm mode may persist positions locally.
 
 ## Adding objects
 
@@ -265,11 +413,16 @@ alternative ecosystem.
 1. Add dynamic switch port counts and create an eight-port switch test.
 2. Establish a Vite React/TypeScript application and `SimulationTransport`.
 3. Implement server and Wasm transport adapters.
-4. Render snapshot-derived custom nodes and port handles.
-5. Add schema-driven **Add...** dialogs and isolated-node placement.
-6. Add power toggling and event-driven state styling.
-7. Add atomic cable creation through handle dragging.
-8. Add reconnect/disconnect-on-empty-drop behavior.
-9. Add context menus, inspection panels, keyboard paths, and accessibility
+4. Namespace idempotency by client and add concurrent-client runtime tests.
+5. Add server-owned workspace positions, layout revisions, and
+   `LayoutChanged` streaming through the runtime ordering boundary.
+6. Render snapshot-derived custom nodes and port handles.
+7. Add schema-driven **Add...** dialogs and isolated-node placement.
+8. Add power toggling and event-driven state styling.
+9. Add atomic cable creation through handle dragging.
+10. Add reconnect/disconnect-on-empty-drop behavior.
+11. Add context menus, inspection panels, keyboard paths, and accessibility
    checks.
-10. Add Playwright coverage for the complete printer-switch-gateway DHCP flow.
+12. Add a two-browser Playwright test proving that creation, power, movement,
+    connection, and disconnection in one client update the other client.
+13. Add Playwright coverage for the complete printer-switch-gateway DHCP flow.
