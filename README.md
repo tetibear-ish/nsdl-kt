@@ -51,13 +51,33 @@ Inside the shell, type `help` to see commands. Objects can be created with
 `create TYPE ID [PROPERTY=VALUE ...]`, connected with a cable using
 `connect CABLE ENDPOINT_A ENDPOINT_B`, powered on, advanced through virtual
 time, listed, and inspected. For example, an `ethernet-switch` exposes
-`switch1.port1` through `switch1.port4`.
+`switch1.port1` through `switch1.port8`.
 
 The `web` command serves the UI at `http://127.0.0.1:8080/`. Commands use the
 same versioned request model as IPC, and topology changes stream to every open
 browser over server-sent events. The standalone Wasm distribution runs the
 same simulation core entirely in the browser and is written to
 `web/build/dist/wasmJs/productionExecutable`.
+
+### React topology client (in development)
+
+The interactive React Flow client lives in `web-client`. Start the JVM web
+server, then run the Vite development server in another terminal:
+
+```sh
+nix develop --command ./gradlew run --args='web --port 8080 --seed 7'
+cd web-client
+nix develop --command npm ci
+nix develop --command npm run dev
+```
+
+Open `http://127.0.0.1:5173/`. Vite proxies `/api` to the JVM server. Run its
+tests and production build with:
+
+```sh
+nix develop --command npm test
+nix develop --command npm run build
+```
 
 ## Documentation
 

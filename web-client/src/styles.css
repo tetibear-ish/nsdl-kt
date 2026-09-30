@@ -1,0 +1,38 @@
+:root { font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #dce9f6; background: #07111f; }
+* { box-sizing: border-box; }
+html, body, #root { width: 100%; height: 100%; margin: 0; }
+button, input, select { font: inherit; }
+.app-shell { width: 100%; height: 100%; display: grid; grid-template-rows: 64px 1fr; background: radial-gradient(circle at 15% 0%, #163451, transparent 35%), #07111f; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; padding: 0 24px; border-bottom: 1px solid #29445f; background: rgba(7, 17, 31, .9); }
+.toolbar > div:first-child { display: flex; align-items: baseline; gap: 12px; }
+.toolbar span { color: #5de4d1; font: 700 12px ui-monospace, monospace; letter-spacing: .18em; }
+.toolbar strong { font-size: 20px; }
+.toolbar-actions { display: flex; align-items: center; gap: 18px; }
+.toolbar output { color: #829ab1; font: 12px ui-monospace, monospace; }
+button { border: 1px solid #3b8d88; border-radius: 9px; padding: 9px 15px; background: #123b3d; color: #d4fff9; cursor: pointer; font-weight: 700; }
+button:hover { background: #185052; }
+button.secondary { border-color: #40566c; background: transparent; color: #a9bdd0; }
+.canvas { min-height: 0; }
+.react-flow { background: transparent; }
+.network-node { position: relative; display: grid; min-width: 172px; padding: 17px 24px; border: 2px solid #587087; border-radius: 14px; background: #10253a; box-shadow: 0 14px 30px rgba(0,0,0,.3); text-align: center; }
+.network-node strong { color: #f5f9fd; font-size: 15px; }
+.network-node span { color: #8da5ba; font: 11px ui-monospace, monospace; }
+.network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
+.network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
+.network-node.power-booting { border-color: #ffc96b; }
+.node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }
+.power-on .node-status { background: #5de4d1; box-shadow: 0 0 8px #5de4d1; }
+.power-booting .node-status { background: #ffc96b; }
+.react-flow__handle.port { width: 12px; height: 12px; border: 2px solid #9bb1c5; background: #10253a; }
+.react-flow__handle.port.occupied { border-color: #5de4d1; background: #2a706b; }
+.topology-edge path { stroke: #66839d; stroke-width: 3; }
+.dialog-overlay { position: fixed; inset: 0; z-index: 20; background: rgba(2, 8, 15, .72); backdrop-filter: blur(4px); }
+.dialog-content { position: fixed; z-index: 21; top: 50%; left: 50%; width: min(470px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; transform: translate(-50%, -50%); border: 1px solid #38536d; border-radius: 16px; padding: 24px; background: #0d2033; box-shadow: 0 24px 80px #0009; }
+.dialog-content h2 { margin: 0 0 6px; }
+.dialog-content > p { margin: 0 0 20px; color: #8da5ba; }
+.dialog-content form { display: grid; gap: 14px; }
+.dialog-content label { display: grid; gap: 6px; color: #aec1d2; font-size: 12px; font-weight: 700; }
+.dialog-content input, .dialog-content select { width: 100%; border: 1px solid #405a73; border-radius: 8px; padding: 10px; outline: none; background: #071624; color: #eef7ff; }
+.dialog-content input:focus, .dialog-content select:focus { border-color: #5de4d1; }
+.dialog-content footer { display: flex; justify-content: flex-end; gap: 10px; margin-top: 8px; }
+.form-error { margin: 0; color: #ff9297; font-size: 13px; }

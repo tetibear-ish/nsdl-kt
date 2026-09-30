@@ -80,4 +80,15 @@ class ObjectTypesCreateTest {
         assertEquals(false, obj.cable!!.isConnected)
         assertEquals(LinkProfile.FAST_ETHERNET_100BASE_TX, obj.cable.profile)
     }
+
+    @Test
+    fun `creating an ethernet switch exposes eight connection ports`() {
+        val validated = validateProperties(EthernetSwitchType.schema.properties, emptyMap())
+
+        val obj = EthernetSwitchType.create(ObjectId("switch1"), validated.properties, ctx)
+
+        assertEquals(8, obj.endpoints.size)
+        assertEquals((1..8).map { ObjectId("switch1.port$it") }, obj.endpoints.map { it.id })
+        assertEquals(PowerState.OFF, obj.power?.powerState)
+    }
 }

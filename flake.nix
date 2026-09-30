@@ -14,7 +14,7 @@
         in
         {
           default = pkgs.mkShell {
-            packages = [ pkgs.jdk21 ];
+            packages = [ pkgs.jdk21 pkgs.nodejs_22 ];
 
             # gradlew picks this up directly; no need to hardcode a /nix/store path.
             JAVA_HOME = pkgs.jdk21.home;

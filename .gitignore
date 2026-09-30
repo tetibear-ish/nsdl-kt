@@ -1,1 +1,6 @@
 build/
+web-client/node_modules/
+web-client/dist/
+web-client/*.tsbuildinfo
+web-client/vite.config.js
+web-client/vite.config.d.ts
