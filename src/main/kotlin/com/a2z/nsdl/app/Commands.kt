@@ -15,6 +15,8 @@ value class EndpointRef(val value: String) {
  */
 sealed interface Command {
     data class Create(val id: String, val type: String, val props: Map<String, Any?> = emptyMap()) : Command
+    /** Applied atomically: [commands] is validated as a whole against a shadow state before any of it runs. */
+    data class ApplyTopology(val commands: List<Command>) : Command
     data class Connect(val cableId: String, val a: EndpointRef, val b: EndpointRef) : Command
     data class Disconnect(val cableId: String) : Command
     data class Configure(val id: String, val props: Map<String, Any?>) : Command

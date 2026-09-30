@@ -2,9 +2,11 @@ package com.a2z.nsdl.app
 
 import com.a2z.nsdl.device.PowerChange
 import com.a2z.nsdl.link.LinkEndpoint
+import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.EventSink
 import com.a2z.nsdl.model.ObjectId
+import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.sim.VirtualScheduler
 import kotlin.random.Random
@@ -42,6 +44,7 @@ class SimulationService(
 
     fun handle(command: Command): CommandResult = when (command) {
         is Command.Create -> handleCreate(command)
+        is Command.ApplyTopology -> handleApplyTopology(command)
         is Command.Connect -> handleConnect(command)
         is Command.Disconnect -> handleDisconnect(command)
         is Command.Configure -> handleConfigure(command)
@@ -66,6 +69,81 @@ class SimulationService(
         objects[id] = Registered(type, obj)
         events.emit(id, EventPayload.ObjectCreated(type.schema.name, type.schema.kind))
         return CommandResult.Ok(obj.root.snapshot())
+    }
+
+    /**
+     * Validates [cmd.commands] as a whole against a shadow state (no real object is created,
+     * no event is emitted) before applying any of it for real. If shadow validation passes, each
+     * sub-command is guaranteed to succeed when replayed through [handle], so no rollback is needed.
+     * Only Create and Connect are supported inside a batch -- that's all a topology ever needs.
+     */
+    private fun handleApplyTopology(cmd: Command.ApplyTopology): CommandResult {
+        validateTopologyBatch(cmd.commands)?.let { return CommandResult.Rejected(it) }
+        val results = cmd.commands.map { sub ->
+            when (val r = handle(sub)) {
+                is CommandResult.Ok -> r
+                is CommandResult.Rejected ->
+                    error("unreachable: '$sub' passed shadow validation but was rejected for real: ${r.error}")
+            }
+        }
+        return CommandResult.Ok(results.map { it.data })
+    }
+
+    private fun validateTopologyBatch(commands: List<Command>): CommandError? {
+        val shadowKinds = mutableMapOf<ObjectId, ObjectKind>()
+        val shadowEndpointMedia = mutableMapOf<String, MediaType>()
+        val shadowConnections = mutableMapOf<ObjectId, Pair<String, String>>()
+
+        fun kindOf(id: ObjectId): ObjectKind? = shadowKinds[id] ?: objects[id]?.type?.schema?.kind
+        fun mediaOf(endpoint: String): MediaType? = shadowEndpointMedia[endpoint]
+            ?: objects.values.asSequence().flatMap { it.obj.endpoints }.firstOrNull { it.id.value == endpoint }?.media
+        fun connectionOf(cableId: ObjectId): Pair<String, String>? = shadowConnections[cableId]
+            ?: objects[cableId]?.obj?.cable?.endpoints?.let { it.first.id.value to it.second.id.value }
+        fun occupied(endpoint: String): Boolean =
+            shadowConnections.values.any { endpoint == it.first || endpoint == it.second } ||
+                objects.values.any { r -> r.obj.cable?.endpoints?.let { endpoint == it.first.id.value || endpoint == it.second.id.value } == true }
+
+        for (sub in commands) {
+            when (sub) {
+                is Command.Create -> {
+                    if (!ObjectId.isValid(sub.id)) return CommandError(ErrorCode.INVALID_ID, "invalid object id '${sub.id}'")
+                    val id = ObjectId(sub.id)
+                    if (id in objects || id in shadowKinds) return CommandError(ErrorCode.DUPLICATE_ID, "object '${sub.id}' already exists")
+                    val type = registry.find(sub.type) ?: return CommandError(ErrorCode.UNKNOWN_TYPE, "unknown type '${sub.type}'")
+                    val validated = validateProperties(type.schema.properties, sub.props)
+                    if (!validated.isValid) return validated.errors.toCommandError()
+
+                    shadowKinds[id] = type.schema.kind
+                    type.schema.interfaces.forEach { shadowEndpointMedia[id.child(it.name).value] = it.media }
+                }
+                is Command.Connect -> {
+                    if (!ObjectId.isValid(sub.cableId)) return CommandError(ErrorCode.INVALID_ID, "invalid object id '${sub.cableId}'")
+                    val cableId = ObjectId(sub.cableId)
+                    if (kindOf(cableId) == null) return CommandError(ErrorCode.UNKNOWN_OBJECT, "no object with id '${sub.cableId}'")
+                    if (kindOf(cableId) != ObjectKind.CABLE) return CommandError(ErrorCode.NOT_A_CABLE, "'${sub.cableId}' is not a cable")
+
+                    val a = sub.a.value
+                    val b = sub.b.value
+                    val aMedia = mediaOf(a) ?: return CommandError(ErrorCode.UNKNOWN_ENDPOINT, "unknown endpoint '$a'")
+                    val bMedia = mediaOf(b) ?: return CommandError(ErrorCode.UNKNOWN_ENDPOINT, "unknown endpoint '$b'")
+
+                    val current = connectionOf(cableId)
+                    if (current != null) {
+                        if (setOf(current.first, current.second) != setOf(a, b)) {
+                            return CommandError(ErrorCode.CABLE_OCCUPIED, "cable '${sub.cableId}' is already connected to a different pair")
+                        }
+                    } else {
+                        if (a == b) return CommandError(ErrorCode.SELF_CONNECTION, "cannot connect an endpoint to itself", mapOf("endpoint" to a))
+                        if (aMedia != bMedia) return CommandError(ErrorCode.INCOMPATIBLE_MEDIA, "incompatible media: $aMedia vs $bMedia")
+                        if (occupied(a)) return CommandError(ErrorCode.ENDPOINT_OCCUPIED, "endpoint '$a' is occupied", mapOf("endpoint" to a))
+                        if (occupied(b)) return CommandError(ErrorCode.ENDPOINT_OCCUPIED, "endpoint '$b' is occupied", mapOf("endpoint" to b))
+                        shadowConnections[cableId] = a to b
+                    }
+                }
+                else -> return CommandError(ErrorCode.INVALID_REQUEST, "unsupported command in ApplyTopology batch: $sub")
+            }
+        }
+        return null
     }
 
     private fun handleConnect(cmd: Command.Connect): CommandResult {

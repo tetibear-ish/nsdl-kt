@@ -267,6 +267,40 @@ class SimulationServiceTest {
         assertEquals(ErrorCode.LIMIT_EXCEEDED, error.code)
     }
 
+    // -- ApplyTopology: shadow-validation edge cases beyond the happy/duplicate/failed-batch
+    //    cases already covered at the nsdl-layer (TopologyTest), which exercises this through
+    //    the DSL. These target the shadow state directly.
+
+    @Test
+    fun `a batch cannot connect an endpoint to itself`() {
+        val batch = Command.ApplyTopology(
+            listOf(
+                Command.Create("printer1", "printer"),
+                Command.Create("cable1", "cat5-cable"),
+                Command.Connect("cable1", EndpointRef("printer1.eth0"), EndpointRef("printer1.eth0")),
+            ),
+        )
+
+        val error = rejected(service.handle(batch))
+        assertEquals(ErrorCode.SELF_CONNECTION, error.code)
+        assertTrue((service.handle(Command.ListObjects) as CommandResult.Ok).data == emptyList<Any>())
+    }
+
+    @Test
+    fun `a batch can connect to an endpoint that already exists outside the batch`() {
+        ok(create("server1", "dhcp-server-host", mapOf("address" to "10.0.0.1", "poolStart" to "10.0.0.100", "poolEnd" to "10.0.0.110")))
+
+        val batch = Command.ApplyTopology(
+            listOf(
+                Command.Create("printer1", "printer"),
+                Command.Create("cable1", "cat5-cable"),
+                Command.Connect("cable1", EndpointRef("printer1.eth0"), EndpointRef("server1.eth0")),
+            ),
+        )
+        val result = ok(service.handle(batch))
+        assertTrue(result.changed)
+    }
+
     // -- ListTypes / ListObjects / Inspect --
 
     @Test
