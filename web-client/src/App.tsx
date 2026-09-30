@@ -145,7 +145,13 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
         <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>
       </section>
-      <AddObjectDialog open={addOpen} types={types} onCreate={createObject} onOpenChange={setAddOpen} />
+      <AddObjectDialog
+        open={addOpen}
+        types={types}
+        existingIds={nodes.map((node) => node.id)}
+        onCreate={createObject}
+        onOpenChange={setAddOpen}
+      />
     </main>
   );
 }
