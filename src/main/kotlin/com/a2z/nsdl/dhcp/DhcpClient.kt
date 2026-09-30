@@ -20,7 +20,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
-enum class DhcpClientState { STOPPED, INIT, SELECTING, REQUESTING, BOUND }
+enum class DhcpClientState { STOPPED, INIT, SELECTING, REQUESTING, BOUND, RENEWING, REBINDING }
 
 /** Retransmission policy (RFC 2131 4.1: 4s doubling to 64s, randomized by +/-1s). */
 data class DhcpClientTimers(
@@ -32,15 +32,23 @@ data class DhcpClientTimers(
 )
 
 /**
- * DHCPv4 client acquisition subset: INIT -> SELECTING -> REQUESTING -> BOUND.
+ * DHCPv4 client acquisition and lease lifecycle: INIT -> SELECTING -> REQUESTING -> BOUND, then
+ * BOUND -> RENEWING (T1, 50% of the lease) -> REBINDING (T2, 87.5%) -> INIT (100%, expiry).
  *
  * - Discovery starts when the client is started and the link is up (or as soon as the link comes up).
  * - The first acceptable OFFER selects the server; its REQUEST is broadcast with options 50 and 54.
  * - Replies are accepted only if op=REPLY, xid matches the current transaction and chaddr is ours;
  *   ACK/NAK must also come from the selected server. Configuration is applied only on ACK.
  * - NAK, or exhausting REQUEST retries, returns to INIT and restarts with a new xid after [DhcpClientTimers.restartDelay].
- * - Each start draws a fresh xid, so replies addressed to an earlier run never match.
- * - Stop clears the acquired configuration (leases are not remembered across power cycles).
+ * - At T1 the client unicasts renewal REQUESTs to its own server, retaining the address. At T2, with
+ *   no ACK yet, it switches to broadcast rebinding REQUESTs any server may answer. A NAK during either
+ *   clears configuration and restarts discovery immediately (no restartDelay: the address is already gone).
+ *   Lease expiry at 100% does the same, but only once T2's retries never landed an ACK.
+ * - T1/T2/expiry are absolute deadlines scheduled once at bind time (and rescheduled on every fresh
+ *   ACK); they fire regardless of the link, so a disconnected lease's timers keep running -- reconnecting
+ *   before expiry resumes renewal/rebinding immediately, reconnecting after starts a fresh DISCOVER.
+ * - Each start (or T1/T2) draws a fresh xid, so replies addressed to an earlier run never match.
+ * - Stop clears the acquired configuration and every lease timer (leases are not remembered across power cycles).
  */
 class DhcpClient(
     override val id: ObjectId,
@@ -54,6 +62,9 @@ class DhcpClient(
         private set
     private var scope: WorkScope? = null
     private var timer: Cancellable? = null
+    private var t1Timer: Cancellable? = null
+    private var t2Timer: Cancellable? = null
+    private var expiryTimer: Cancellable? = null
     private var xid = 0
     private var attempts = 0
     private var selectedServer: Ipv4Address? = null
@@ -74,6 +85,7 @@ class DhcpClient(
 
     override fun stop() {
         cancelTimer()
+        cancelLeaseTimers()
         scope = null
         if (state == DhcpClientState.STOPPED) return
         configurator.applyConfig(null)
@@ -86,6 +98,8 @@ class DhcpClient(
         if (!up) return
         when (state) {
             DhcpClientState.INIT, DhcpClientState.SELECTING, DhcpClientState.REQUESTING -> { cancelTimer(); beginSelecting() }
+            DhcpClientState.RENEWING -> { cancelTimer(); attempts = 0; sendRenewal() }
+            DhcpClientState.REBINDING -> { cancelTimer(); attempts = 0; sendRebind() }
             DhcpClientState.STOPPED, DhcpClientState.BOUND -> Unit
         }
     }
@@ -117,12 +131,47 @@ class DhcpClient(
         }
     }
 
+    /** T1: unicast to the known server, since the client already has a working address to receive a reply on. */
+    private fun sendRenewal() {
+        val server = selectedServer ?: return
+        send(
+            DhcpMessage(
+                BootOp.REQUEST, DhcpMessageType.REQUEST, xid, transport.hardwareAddress,
+                requestedIp = offeredIp, serverId = server, broadcast = false,
+            ),
+            dst = server,
+        )
+        arm(backoff(attempts)) { attempts++; sendRenewal() }
+    }
+
+    /** T2: broadcast, since renewal never landed an ACK and any server that knows this lease may answer. */
+    private fun sendRebind() {
+        send(
+            DhcpMessage(
+                BootOp.REQUEST, DhcpMessageType.REQUEST, xid, transport.hardwareAddress,
+                requestedIp = offeredIp, serverId = selectedServer, broadcast = true,
+            ),
+        )
+        arm(backoff(attempts)) { attempts++; sendRebind() }
+    }
+
     private fun restart(reason: String) {
         cancelTimer()
         selectedServer = null
         offeredIp = null
         transition(DhcpClientState.INIT, reason)
         arm(timers.restartDelay) { if (transport.linkUp) beginSelecting() }
+    }
+
+    /** NAK (or expiry) during an active lease: the address is already gone, so there is nothing to wait for. */
+    private fun restartImmediately(reason: String) {
+        cancelTimer()
+        cancelLeaseTimers()
+        configurator.applyConfig(null)
+        selectedServer = null
+        offeredIp = null
+        transition(DhcpClientState.INIT, reason)
+        if (transport.linkUp) beginSelecting()
     }
 
     private fun onDatagram(d: ReceivedDatagram) {
@@ -142,10 +191,12 @@ class DhcpClient(
                 transition(DhcpClientState.REQUESTING, "server=${msg.serverId} offered=${msg.yiaddr}")
                 sendRequest()
             }
-            state == DhcpClientState.REQUESTING && msg.serverId == selectedServer && msg.type == DhcpMessageType.ACK &&
-                msg.yiaddr == offeredIp -> bind(msg)
+            (state == DhcpClientState.REQUESTING || state == DhcpClientState.RENEWING || state == DhcpClientState.REBINDING) &&
+                msg.serverId == selectedServer && msg.type == DhcpMessageType.ACK && msg.yiaddr == offeredIp -> bind(msg)
             state == DhcpClientState.REQUESTING && msg.serverId == selectedServer && msg.type == DhcpMessageType.NAK ->
                 restart("NAK from ${msg.serverId}")
+            (state == DhcpClientState.RENEWING || state == DhcpClientState.REBINDING) &&
+                msg.serverId == selectedServer && msg.type == DhcpMessageType.NAK -> restartImmediately("NAK from ${msg.serverId} during $state")
             else -> ignoredReplies++
         }
     }
@@ -162,11 +213,49 @@ class DhcpClient(
                 server = ack.serverId,
             ),
         )
+        offeredIp = ack.yiaddr
         transition(DhcpClientState.BOUND, "address=${ack.yiaddr} lease=${ack.leaseSeconds}s")
+        scheduleLeaseTimers(ack.leaseSeconds)
     }
 
-    private fun send(msg: DhcpMessage) {
-        transport.sendUdp(DhcpMessage.CLIENT_PORT, Ipv4Address.BROADCAST, DhcpMessage.SERVER_PORT, msg)
+    private fun scheduleLeaseTimers(leaseSeconds: Long?) {
+        cancelLeaseTimers()
+        if (leaseSeconds == null) return
+        val totalMs = leaseSeconds * 1000L
+        t1Timer = scope?.schedule((totalMs / 2).milliseconds) { t1Timer = null; onT1() }
+        t2Timer = scope?.schedule((totalMs * 7 / 8).milliseconds) { t2Timer = null; onT2() }
+        expiryTimer = scope?.schedule(totalMs.milliseconds) { expiryTimer = null; onExpiry() }
+    }
+
+    private fun cancelLeaseTimers() {
+        t1Timer?.cancel(); t1Timer = null
+        t2Timer?.cancel(); t2Timer = null
+        expiryTimer?.cancel(); expiryTimer = null
+    }
+
+    private fun onT1() {
+        if (state != DhcpClientState.BOUND) return
+        xid = random.nextInt()
+        attempts = 0
+        transition(DhcpClientState.RENEWING, "xid=0x${hex(xid.toLong(), 8)}")
+        sendRenewal()
+    }
+
+    private fun onT2() {
+        if (state != DhcpClientState.RENEWING) return
+        cancelTimer()
+        xid = random.nextInt()
+        attempts = 0
+        transition(DhcpClientState.REBINDING, "xid=0x${hex(xid.toLong(), 8)}")
+        sendRebind()
+    }
+
+    private fun onExpiry() {
+        restartImmediately("lease expired")
+    }
+
+    private fun send(msg: DhcpMessage, dst: Ipv4Address = Ipv4Address.BROADCAST) {
+        transport.sendUdp(DhcpMessage.CLIENT_PORT, dst, DhcpMessage.SERVER_PORT, msg)
     }
 
     private fun arm(delay: Duration, action: () -> Unit) {

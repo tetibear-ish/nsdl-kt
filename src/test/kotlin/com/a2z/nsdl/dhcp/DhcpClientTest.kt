@@ -5,6 +5,7 @@ import com.a2z.nsdl.ip.ReceivedDatagram
 import com.a2z.nsdl.link.Cable
 import com.a2z.nsdl.link.EthernetInterface
 import com.a2z.nsdl.link.LinkProfile
+import com.a2z.nsdl.model.EventPayload.NetworkConfigChanged
 import com.a2z.nsdl.model.EventPayload.ProtocolStateChanged
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.net.ConfigSource
@@ -15,6 +16,7 @@ import com.a2z.nsdl.sim.VirtualScheduler
 import com.a2z.nsdl.sim.WorkScope
 import com.a2z.nsdl.testing.RecordingSink
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -234,6 +236,155 @@ class DhcpClientTest {
         client.stop()
 
         assertNull(clientStack.config)
+        assertEquals(DhcpClientState.STOPPED, client.state)
+    }
+
+    private fun acquire() {
+        connectAndStart()
+        reply(DhcpMessageType.OFFER)
+        reply(DhcpMessageType.ACK)
+    }
+
+    @Test
+    fun `a bound lease is untouched well before its first deadline`() {
+        acquire()
+        scheduler.advanceBy(1000.seconds) // well short of T1 at 1800s (50% of the 3600s lease)
+
+        assertEquals(DhcpClientState.BOUND, client.state)
+        assertEquals(offeredIp, clientStack.config?.address)
+    }
+
+    @Test
+    fun `T1 sends a unicast renewal REQUEST naming the lease's server, retaining the address`() {
+        acquire()
+        scheduler.advanceBy(1800.seconds) // T1: 50% of the 3600s lease
+
+        assertEquals(DhcpClientState.RENEWING, client.state)
+        assertEquals(offeredIp, clientStack.config?.address, "address is retained while renewing")
+        val renewal = requests.last()
+        assertEquals(DhcpMessageType.REQUEST, renewal.type)
+        assertEquals(serverIp, renewal.serverId)
+        assertFalse(renewal.broadcast, "client already has an address and can receive a unicast reply")
+    }
+
+    @Test
+    fun `a successful T1 renewal keeps the address and reschedules all deadlines`() {
+        acquire()
+        scheduler.advanceBy(1800.seconds) // T1
+        reply(DhcpMessageType.ACK)
+
+        assertEquals(DhcpClientState.BOUND, client.state)
+        assertEquals(offeredIp, clientStack.config?.address)
+
+        // Deadlines rescheduled from this renewal: advancing only to the *original* T2 (3150s absolute,
+        // i.e. 1350s from here) must NOT yet trigger rebinding -- the new T1/T2 are relative to the renewal.
+        scheduler.advanceBy(1350.seconds)
+        assertEquals(DhcpClientState.BOUND, client.state, "T2 was rescheduled from the renewal, not the original bind")
+    }
+
+    @Test
+    fun `failed T1 renewal attempts transition to broadcast rebinding at T2`() {
+        acquire()
+        scheduler.advanceBy(3150.seconds) // T2: 87.5% of the 3600s lease, with no renewal ACK in between
+
+        assertEquals(DhcpClientState.REBINDING, client.state)
+        assertEquals(offeredIp, clientStack.config?.address, "address is retained while rebinding")
+        val rebind = requests.last()
+        assertEquals(DhcpMessageType.REQUEST, rebind.type)
+        assertTrue(rebind.broadcast)
+    }
+
+    @Test
+    fun `a successful T2 rebind accepts an ACK and reschedules the lease`() {
+        acquire()
+        scheduler.advanceBy(3150.seconds) // T2
+        reply(DhcpMessageType.ACK)
+
+        assertEquals(DhcpClientState.BOUND, client.state)
+        assertEquals(offeredIp, clientStack.config?.address)
+    }
+
+    @Test
+    fun `expiry while disconnected clears the address exactly once`() {
+        acquire()
+        cable.disconnect()
+        sink.clear()
+
+        scheduler.advanceBy(3600.seconds) // expiry: 100% of the lease
+
+        assertNull(clientStack.config)
+        assertEquals(1, sink.of<NetworkConfigChanged>(clientNic.id).size)
+        assertEquals(DhcpClientState.INIT, client.state, "link is down, so discovery doesn't resume yet")
+    }
+
+    @Test
+    fun `reconnect before expiry retains the lease`() {
+        acquire()
+        cable.disconnect()
+        scheduler.advanceBy(1800.seconds) // T1, while disconnected: renewal send fails silently
+        assertEquals(DhcpClientState.RENEWING, client.state)
+        assertEquals(offeredIp, clientStack.config?.address)
+
+        cable.connect(clientNic, serverNic)
+        settle()
+        reply(DhcpMessageType.ACK)
+
+        assertEquals(DhcpClientState.BOUND, client.state)
+        assertEquals(offeredIp, clientStack.config?.address)
+    }
+
+    @Test
+    fun `reconnect after expiry starts a fresh DISCOVER`() {
+        acquire()
+        cable.disconnect()
+        scheduler.advanceBy(3600.seconds) // expiry while disconnected
+        assertNull(clientStack.config)
+
+        cable.connect(clientNic, serverNic)
+        settle()
+
+        assertEquals(DhcpMessageType.DISCOVER, requests.last().type)
+        assertEquals(DhcpClientState.SELECTING, client.state)
+    }
+
+    @Test
+    fun `a NAK during renewal clears configuration and restarts acquisition`() {
+        acquire()
+        scheduler.advanceBy(1800.seconds) // T1
+        reply(DhcpMessageType.NAK)
+
+        assertNull(clientStack.config)
+        assertEquals(DhcpClientState.SELECTING, client.state, "link is still up, so discovery resumes immediately with no restartDelay")
+        assertEquals(DhcpMessageType.DISCOVER, requests.last().type)
+    }
+
+    @Test
+    fun `a NAK during rebinding clears configuration and restarts acquisition`() {
+        acquire()
+        scheduler.advanceBy(3150.seconds) // T2
+        reply(DhcpMessageType.NAK)
+
+        assertNull(clientStack.config)
+        assertEquals(DhcpClientState.SELECTING, client.state, "link is still up, so discovery resumes immediately with no restartDelay")
+        assertEquals(DhcpMessageType.DISCOVER, requests.last().type)
+    }
+
+    @Test
+    fun `power-off cancels stale renewal, rebinding and expiry callbacks`() {
+        val scope = WorkScope(scheduler)
+        cable.connect(clientNic, serverNic)
+        client.start(scope)
+        settle()
+        reply(DhcpMessageType.OFFER)
+        reply(DhcpMessageType.ACK)
+
+        scope.close()
+        client.stop()
+        val requestCountAtStop = requests.size
+
+        scheduler.advanceBy(4000.seconds) // past T1, T2 and expiry
+
+        assertEquals(requestCountAtStop, requests.size, "no renewal, rebind or expiry work ran after power-off")
         assertEquals(DhcpClientState.STOPPED, client.state)
     }
 }
