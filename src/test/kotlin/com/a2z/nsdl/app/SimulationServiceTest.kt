@@ -89,12 +89,9 @@ class SimulationServiceTest {
     }
 
     @Test
-    fun `missing required properties are collected as MISSING_PROPERTY details`() {
-        val error = rejected(create("s1", "dhcp-server-host"))
-        assertEquals(ErrorCode.MISSING_PROPERTY, error.code)
-        @Suppress("UNCHECKED_CAST")
-        val errors = error.details["errors"] as List<Map<String, Any?>>
-        assertEquals(setOf("address", "poolStart", "poolEnd"), errors.map { it["property"] }.toSet())
+    fun `gateway can be created with its default network and pool`() {
+        val result = ok(create("s1", "dhcp-server-host"))
+        assertTrue(result.data is ObjectSnapshot)
     }
 
     // -- Connect / Disconnect --

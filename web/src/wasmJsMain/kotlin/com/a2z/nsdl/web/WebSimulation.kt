@@ -175,7 +175,16 @@ class WebSimulation(seed: Long = 0L) {
         is ObjectTypeSchema -> mapOf(
             "name" to value.name,
             "kind" to value.kind.name,
-            "properties" to value.properties.map { mapOf("name" to it.name, "type" to it.type.name, "required" to it.required) },
+            "properties" to value.properties.map {
+                mapOf(
+                    "name" to it.name,
+                    "type" to it.type.name,
+                    "required" to it.required,
+                    "default" to toWire(it.default),
+                    "mutable" to it.mutable,
+                    "description" to it.description,
+                )
+            },
             "interfaces" to value.interfaces.map { mapOf("name" to it.name, "media" to it.media.name) },
         )
         is List<*> -> value.map(::toWire)

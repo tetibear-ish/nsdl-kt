@@ -33,10 +33,18 @@ class PropertyValidatorTest {
     fun `a missing required property is reported as MISSING_PROPERTY`() {
         val result = validateProperties(DhcpServerHostType.schema.properties, emptyMap())
 
-        assertEquals(
-            setOf("address", "poolStart", "poolEnd"),
-            result.errors.filter { it.problem == PropertyProblem.MISSING_PROPERTY }.map { it.property }.toSet(),
-        )
+        assertTrue(result.errors.none { it.problem == PropertyProblem.MISSING_PROPERTY })
+    }
+
+    @Test
+    fun `gateway has a usable default address and sixteen-address DHCP pool`() {
+        val result = validateProperties(DhcpServerHostType.schema.properties, emptyMap())
+
+        assertTrue(result.isValid, "errors: ${result.errors}")
+        assertEquals("192.168.1.1", result.properties["address"].toString())
+        assertEquals("192.168.1.100", result.properties["poolStart"].toString())
+        assertEquals("192.168.1.115", result.properties["poolEnd"].toString())
+        assertEquals("192.168.1.1", result.properties["router"].toString())
     }
 
     @Test
@@ -100,7 +108,7 @@ class PropertyValidatorTest {
         )
 
         assertEquals(
-            setOf("address" to PropertyProblem.INVALID_PROPERTY, "poolStart" to PropertyProblem.MISSING_PROPERTY, "poolEnd" to PropertyProblem.MISSING_PROPERTY, "extra" to PropertyProblem.UNKNOWN_PROPERTY),
+            setOf("address" to PropertyProblem.INVALID_PROPERTY, "extra" to PropertyProblem.UNKNOWN_PROPERTY),
             result.errors.map { it.property to it.problem }.toSet(),
         )
     }

@@ -24,12 +24,12 @@ object DhcpServerHostType : ObjectType {
         name = "dhcp-server-host",
         kind = ObjectKind.DEVICE,
         properties = listOf(
-            PropertySpec("address", PropertyType.IPV4, required = true, description = "Static IPv4 address"),
+            PropertySpec("address", PropertyType.IPV4, required = false, default = Ipv4Address.parse("192.168.1.1"), description = "Static IPv4 address"),
             PropertySpec("subnetMask", PropertyType.IPV4, required = false, default = Ipv4Address.parse("255.255.255.0"), description = "Subnet mask"),
-            PropertySpec("poolStart", PropertyType.IPV4, required = true, description = "First address in the DHCP pool"),
-            PropertySpec("poolEnd", PropertyType.IPV4, required = true, description = "Last address in the DHCP pool"),
+            PropertySpec("poolStart", PropertyType.IPV4, required = false, default = Ipv4Address.parse("192.168.1.100"), description = "First address in the DHCP pool"),
+            PropertySpec("poolEnd", PropertyType.IPV4, required = false, default = Ipv4Address.parse("192.168.1.115"), description = "Last address in the DHCP pool"),
             PropertySpec("leaseSeconds", PropertyType.LONG, required = false, default = 3600L, description = "Lease duration in seconds"),
-            PropertySpec("router", PropertyType.IPV4, required = false, description = "Router address offered to clients"),
+            PropertySpec("router", PropertyType.IPV4, required = false, default = Ipv4Address.parse("192.168.1.1"), description = "Router address offered to clients"),
         ),
         interfaces = listOf(InterfaceSpec("eth0", MediaType.TWISTED_PAIR)),
     )
