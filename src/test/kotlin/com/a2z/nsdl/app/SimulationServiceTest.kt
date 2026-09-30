@@ -333,4 +333,11 @@ class SimulationServiceTest {
         val result = ok(service.handle(Command.Inspect("printer1")))
         assertEquals(ObjectId("printer1"), (result.data as ObjectSnapshot).id)
     }
+
+    @Test
+    fun `inspecting a sub-component by its own id returns that component's snapshot, not the root's`() {
+        ok(create("printer1", "printer"))
+        val result = ok(service.handle(Command.Inspect("printer1.dhcp-client")))
+        assertEquals(ObjectId("printer1.dhcp-client"), (result.data as ObjectSnapshot).id)
+    }
 }

@@ -220,10 +220,13 @@ class SimulationService(
         )
     }
 
+    /** A registered object's root is inspectable by its own id; its components (interfaces, services) by theirs. */
     private fun handleInspect(cmd: Command.Inspect): CommandResult {
         if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
-        val registered = objects[ObjectId(cmd.id)] ?: return unknownObject(cmd.id)
-        return CommandResult.Ok(registered.obj.root.snapshot())
+        val id = ObjectId(cmd.id)
+        val target = objects[id]?.obj?.root
+            ?: objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
+        return target?.let { CommandResult.Ok(it.snapshot()) } ?: unknownObject(cmd.id)
     }
 
     private fun resolveEndpoint(ref: EndpointRef): LinkEndpoint? =
