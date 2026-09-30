@@ -8,6 +8,12 @@ import kotlin.time.Duration.Companion.milliseconds
 /** Physical connector/medium family. Endpoints connect only through a cable of the same media type. */
 enum class MediaType { TWISTED_PAIR }
 
+/** Why a cable connection cannot be made. */
+enum class ConnectionProblem { ALREADY_CONNECTED, SELF_CONNECTION, INCOMPATIBLE_MEDIA, ENDPOINT_OCCUPIED }
+
+/** [endpoint] is the specific endpoint at fault, when the problem names one (SELF_CONNECTION, ENDPOINT_OCCUPIED). */
+data class ConnectionRejection(val problem: ConnectionProblem, val endpoint: ObjectId? = null)
+
 /**
  * Declared link behavior. Speed is informational: frames are delivered after [propagationDelay]
  * with no serialization delay, loss, bit errors, collisions or duplex negotiation.

@@ -34,17 +34,17 @@ class Cable(
     override val isLinkUp get() = endpoints?.let { (a, b) -> a.isEnabled && b.isEnabled } ?: false
 
     /** Reasons the connection is invalid, or null if it can be made. */
-    fun connectionProblem(a: LinkEndpoint, b: LinkEndpoint): String? = when {
-        isConnected -> "cable ${id} is already connected"
-        a.id == b.id -> "cannot connect an endpoint to itself"
-        a.media != profile.media || b.media != profile.media -> "incompatible media: cable is ${profile.media}, endpoints are ${a.media}/${b.media}"
-        a.isAttached -> "endpoint ${a.id} is occupied"
-        b.isAttached -> "endpoint ${b.id} is occupied"
+    fun connectionProblem(a: LinkEndpoint, b: LinkEndpoint): ConnectionRejection? = when {
+        isConnected -> ConnectionRejection(ConnectionProblem.ALREADY_CONNECTED)
+        a.id == b.id -> ConnectionRejection(ConnectionProblem.SELF_CONNECTION, a.id)
+        a.media != profile.media || b.media != profile.media -> ConnectionRejection(ConnectionProblem.INCOMPATIBLE_MEDIA)
+        a.isAttached -> ConnectionRejection(ConnectionProblem.ENDPOINT_OCCUPIED, a.id)
+        b.isAttached -> ConnectionRejection(ConnectionProblem.ENDPOINT_OCCUPIED, b.id)
         else -> null
     }
 
     fun connect(a: LinkEndpoint, b: LinkEndpoint) {
-        connectionProblem(a, b)?.let { throw IllegalStateException(it) }
+        connectionProblem(a, b)?.let { throw IllegalStateException("cable $id: $it") }
         epoch++
         endpoints = a to b
         a.attached(this)

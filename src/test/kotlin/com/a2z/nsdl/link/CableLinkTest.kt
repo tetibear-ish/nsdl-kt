@@ -19,6 +19,8 @@ import com.a2z.nsdl.testing.RecordingSink
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import kotlin.time.Duration.Companion.milliseconds
@@ -155,6 +157,45 @@ class CableLinkTest {
         assertEquals(listOf("Disconnected", "LinkStateChanged", "LinkStateChanged"), sink.names())
         assertEquals(listOf(Disconnected(a.id, b.id)), sink.of<Disconnected>(cable.id))
         assertFalse(a.isAttached)
+    }
+
+    @Test
+    fun `two enabled interfaces with no conflict have no connection problem`() {
+        a.enable(); b.enable()
+        assertNull(cable.connectionProblem(a, b))
+    }
+
+    @Test
+    fun `connecting to an already-connected cable is rejected as ALREADY_CONNECTED`() {
+        upLink()
+        val c = EthernetInterface(ObjectId("c.eth0"), MacAddress.local(3), sink)
+
+        assertEquals(ConnectionRejection(ConnectionProblem.ALREADY_CONNECTED), cable.connectionProblem(a, c))
+    }
+
+    @Test
+    fun `connecting an endpoint to itself is rejected as SELF_CONNECTION`() {
+        val aAgain = EthernetInterface(a.id, MacAddress.local(9), sink)
+
+        assertEquals(ConnectionRejection(ConnectionProblem.SELF_CONNECTION, a.id), cable.connectionProblem(a, aAgain))
+    }
+
+    @Test
+    fun `connecting to an occupied endpoint is rejected as ENDPOINT_OCCUPIED, naming the occupied one`() {
+        upLink()
+        val fresh = Cable(ObjectId("cable2"), LinkProfile.FAST_ETHERNET_100BASE_TX, scheduler, sink)
+        val c = EthernetInterface(ObjectId("c.eth0"), MacAddress.local(3), sink)
+
+        assertEquals(ConnectionRejection(ConnectionProblem.ENDPOINT_OCCUPIED, a.id), fresh.connectionProblem(a, c))
+        assertEquals(ConnectionRejection(ConnectionProblem.ENDPOINT_OCCUPIED, b.id), fresh.connectionProblem(c, b))
+    }
+
+    @Test
+    fun `connect throws for a rejected connection`() {
+        upLink()
+        val c = EthernetInterface(ObjectId("c.eth0"), MacAddress.local(3), sink)
+
+        assertThrows(IllegalStateException::class.java) { cable.connect(a, c) }
     }
 
     @Test
