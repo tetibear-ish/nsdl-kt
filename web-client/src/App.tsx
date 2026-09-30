@@ -11,6 +11,7 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
+import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AddObjectDialog } from "./AddObjectDialog";
 import { NetworkNode } from "./NetworkNode";
@@ -206,10 +207,20 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <div className="toolbar-actions">
           <output>{status}</output>
           <button onClick={() => openAddAt()}>Add…</button>
-          <button className="secondary" onClick={saveLab}>Save</button>
-          <button className="secondary" onClick={loadLab}>Load</button>
-          <button className="secondary" onClick={exportLab}>Export…</button>
-          <button className="secondary" onClick={() => importInput.current?.click()}>Import…</button>
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className="secondary icon-button" aria-label="Lab options">⋯</button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="dropdown-content" align="end" sideOffset={6}>
+                <DropdownMenu.Item className="dropdown-item" onSelect={saveLab}>Save</DropdownMenu.Item>
+                <DropdownMenu.Item className="dropdown-item" onSelect={loadLab}>Load</DropdownMenu.Item>
+                <DropdownMenu.Separator className="dropdown-separator" />
+                <DropdownMenu.Item className="dropdown-item" onSelect={exportLab}>Export…</DropdownMenu.Item>
+                <DropdownMenu.Item className="dropdown-item" onSelect={() => importInput.current?.click()}>Import…</DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
           <input
             ref={importInput}
             type="file"

@@ -12,6 +12,11 @@ button, input, select { font: inherit; }
 button { border: 1px solid #3b8d88; border-radius: 9px; padding: 9px 15px; background: #123b3d; color: #d4fff9; cursor: pointer; font-weight: 700; }
 button:hover { background: #185052; }
 button.secondary { border-color: #40566c; background: transparent; color: #a9bdd0; }
+button.icon-button { padding: 9px 12px; font-size: 16px; line-height: 1; letter-spacing: .1em; }
+.dropdown-content { z-index: 22; min-width: 160px; border: 1px solid #38536d; border-radius: 10px; padding: 6px; background: #0d2033; box-shadow: 0 16px 48px #0009; }
+.dropdown-item { border-radius: 6px; padding: 9px 12px; color: #d9e6f2; font-size: 13px; cursor: pointer; outline: none; }
+.dropdown-item[data-highlighted] { background: #185052; color: #d4fff9; }
+.dropdown-separator { height: 1px; margin: 6px 4px; background: #29445f; }
 .canvas { min-height: 0; }
 .workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
 .inspector { min-width: 0; overflow: auto; border-left: 1px solid #29445f; padding: 16px; background: rgba(7, 19, 31, .92); }
