@@ -11,6 +11,12 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
       <strong>{data.snapshot.id}</strong>
       <span>{data.snapshot.type}</span>
       <small>{power}</small>
+      <button
+        className="node-power nodrag nopan"
+        onClick={(event) => { event.stopPropagation(); data.onPowerToggle?.(data.snapshot); }}
+        title={power === "OFF" ? "Power on" : "Power off"}
+        type="button"
+      >{power === "OFF" ? "Power on" : "Power off"}</button>
       {data.ports.map((port, index) => {
         const left = index < split;
         const sideIndex = left ? index : index - split;

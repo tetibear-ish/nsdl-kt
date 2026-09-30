@@ -70,6 +70,7 @@ export class BrowserWasmTransport implements SimulationTransport {
   private readonly ready: Promise<WasmBridge>;
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastTick = Date.now();
+  private lastRevision = 0;
 
   constructor(ready?: Promise<WasmBridge>, private readonly tickMs = 250) {
     this.ready = ready ?? window.nsdlWasmReady ?? new Promise(() => {});
@@ -78,7 +79,10 @@ export class BrowserWasmTransport implements SimulationTransport {
   async execute<T = unknown>(op: string, params: Record<string, unknown> = {}): Promise<CommandResult<T>> {
     const bridge = await this.ready;
     const result = JSON.parse(bridge.command(JSON.stringify({ v: 1, op, params }))) as CommandResult<T>;
-    if (result.ok && result.changed && MUTATING_OPERATIONS.has(op)) {
+    const previousRevision = this.lastRevision;
+    if (result.ok) this.lastRevision = Math.max(this.lastRevision, result.revision);
+    const emittedEvents = result.ok && result.revision > previousRevision;
+    if (result.ok && result.changed && MUTATING_OPERATIONS.has(op) && (op !== "advance" || emittedEvents)) {
       this.listeners.forEach((listener) => listener({ type: "event" }));
     }
     return result;
@@ -88,6 +92,7 @@ export class BrowserWasmTransport implements SimulationTransport {
   listObjects() { return this.execute<ObjectSnapshot[]>("listObjects"); }
 
   subscribe(_from: number, listener: (event: SimulationEvent) => void): () => void {
+    this.lastRevision = Math.max(this.lastRevision, _from);
     this.listeners.add(listener);
     if (!this.timer) {
       this.lastTick = Date.now();

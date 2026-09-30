@@ -33,8 +33,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
+  const pinnedInspection = useRef(false);
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
+
+  const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
+    const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
+    const result = await transport.execute(op, { id: snapshot.id });
+    if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
+    setLog((entries) => [...entries.slice(-99), result.ok ? `${op} ${snapshot.id}` : `${op} ${snapshot.id}: ${result.error.message}`]);
+  }, [transport]);
 
   const refresh = useCallback(async () => {
     const result = await transport.listObjects();
@@ -42,7 +50,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       setStatus(`${result.error.code}: ${result.error.message}`);
       return 0;
     }
-    const projected = projectTopology(result.data, useEditorStore.getState().positions);
+    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); });
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
       const before = powerStates.current[node.id];
@@ -55,7 +63,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setEdges(projected.edges);
     setStatus(`revision ${result.revision}`);
     return result.revision;
-  }, [setEdges, setNodes, transport]);
+  }, [setEdges, setNodes, togglePower, transport]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -97,14 +105,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const results = await Promise.all(ids.map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
     setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
   }, [transport]);
-
-  const togglePower = useCallback(async (_event: React.MouseEvent, node: NetworkNodeType) => {
-    const op = node.data.snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
-    const result = await transport.execute(op, { id: node.id });
-    if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
-    setLog((entries) => [...entries.slice(-99), result.ok ? `${op} ${node.id}` : `${op} ${node.id}: ${result.error.message}`]);
-    await refresh();
-  }, [refresh, transport]);
 
   const createObject = useCallback(async (type: ObjectTypeSchema, id: string, props: Record<string, string>) => {
     const cleaned = Object.fromEntries(Object.entries(props).filter(([, value]) => value !== ""));
@@ -149,16 +149,18 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgesChange={onEdgesChange}
           onEdgesDelete={(deleted) => { deleted.forEach((edge) => { void disconnect(edge); }); }}
           onEdgeDoubleClick={(_event, edge) => { void disconnect(edge); }}
-          onEdgeMouseEnter={(_event, edge) => setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : [])}
-          onEdgeMouseLeave={() => setInspected([])}
+          onEdgeClick={(_event, edge) => { pinnedInspection.current = true; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
+          onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
+          onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
-          onNodeClick={togglePower}
-          onNodeMouseEnter={(_event, node) => { void inspectNode(node); }}
-          onNodeMouseLeave={() => setInspected([])}
+          onNodeClick={(_event, node) => { pinnedInspection.current = true; void inspectNode(node); }}
+          onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void inspectNode(node); }}
+          onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onNodeDragStop={(_event, node) => setPosition(node.id, node.position)}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
+          onPaneClick={() => { pinnedInspection.current = false; setInspected([]); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />

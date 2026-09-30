@@ -58,4 +58,15 @@ describe("BrowserWasmTransport", () => {
     expect(JSON.parse(command.mock.calls[0][0])).toMatchObject({ op: "advance", params: { durationMs: 250 } });
     vi.useRealTimers();
   });
+
+  it("does not redraw subscribers when a clock tick emits no events", async () => {
+    const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 7, changed: true, data: null }));
+    const transport = new BrowserWasmTransport(Promise.resolve({ command }));
+    const listener = vi.fn();
+    transport.subscribe(7, listener);
+
+    await transport.execute("advance", { durationMs: 250 });
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });
