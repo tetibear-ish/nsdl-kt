@@ -90,6 +90,8 @@ class SimulationRuntime(
 
     fun journalSnapshot(): List<Command> = executor.submit(Callable { journal.snapshot() }).get()
 
+    fun currentRevision(): Long = executor.submit(Callable { eventHub.lastSeq }).get()
+
     fun close() {
         executor.shutdown()
     }

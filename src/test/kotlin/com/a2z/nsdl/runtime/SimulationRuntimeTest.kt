@@ -206,4 +206,11 @@ class SimulationRuntimeTest {
 
         assertNotEquals(xidA, xidB)
     }
+
+    @Test
+    fun `currentRevision matches the last submit's own revision`() {
+        val runtime = newRuntime()
+        val created = runtime.submit(Request(Command.Create("printer1", "printer")))
+        assertEquals(created.revision, runtime.currentRevision())
+    }
 }
