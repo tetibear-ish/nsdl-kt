@@ -67,13 +67,17 @@ describe("tickDuration: elapsed-time accounting", () => {
 });
 
 describe("formatVirtualTime", () => {
-  it("formats sub-minute durations as seconds with one decimal", () => {
-    expect(formatVirtualTime(0)).toBe("0.0s");
-    expect(formatVirtualTime(12_300)).toBe("12.3s");
+  it("formats sub-minute durations as whole seconds", () => {
+    expect(formatVirtualTime(0)).toBe("0s");
+    expect(formatVirtualTime(12_300)).toBe("12s");
   });
 
-  it("formats durations of a minute or more as m:ss.s", () => {
-    expect(formatVirtualTime(65_000)).toBe("1:05.0");
-    expect(formatVirtualTime(3_661_200)).toBe("61:01.2");
+  it("rounds down to the whole second rather than up", () => {
+    expect(formatVirtualTime(12_900)).toBe("12s");
+  });
+
+  it("formats durations of a minute or more as m:ss", () => {
+    expect(formatVirtualTime(65_000)).toBe("1:05");
+    expect(formatVirtualTime(3_661_200)).toBe("61:01");
   });
 });

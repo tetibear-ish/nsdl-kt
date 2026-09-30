@@ -16,7 +16,7 @@ button.icon-button { padding: 9px 12px; font-size: 16px; line-height: 1; letter-
 button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4fff9; }
 .clock-controls { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid #29445f; border-radius: 9px; }
 .clock-controls button { padding: 5px 10px; font-size: 12px; }
-.clock-controls .clock-time { min-width: 62px; color: #d4fff9; font: 700 12px ui-monospace, monospace; letter-spacing: normal; text-align: right; }
+.clock-controls .clock-time { min-width: 62px; color: #8da5ba; font: 700 12px ui-monospace, monospace; letter-spacing: normal; text-align: right; }
 .clock-controls .clock-drive-mode { color: #5b7a94; font: 11px ui-monospace, monospace; letter-spacing: normal; text-transform: none; }
 .dropdown-content { z-index: 22; min-width: 160px; border: 1px solid #38536d; border-radius: 10px; padding: 6px; background: #0d2033; box-shadow: 0 16px 48px #0009; }
 .dropdown-item { border-radius: 6px; padding: 9px 12px; color: #d9e6f2; font-size: 13px; cursor: pointer; outline: none; }
@@ -47,10 +47,7 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node span { color: #8da5ba; font: 11px ui-monospace, monospace; }
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
-.network-node .node-dhcp { display: block; color: #5b7a94; font-weight: 400; letter-spacing: normal; }
-.network-node .node-dhcp.dhcp-bound { color: #5de4d1; }
-.network-node .node-dhcp.dhcp-renewing, .network-node .node-dhcp.dhcp-rebinding { color: #ffc96b; }
-.network-node .node-dhcp.dhcp-expired { color: #ff9297; }
+.network-node .node-dhcp { display: block; color: #718ba2; font-weight: 400; letter-spacing: normal; }
 .network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
 .network-node.power-booting { border-color: #ffc96b; }
 .node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }

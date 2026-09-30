@@ -2,7 +2,7 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { useActivityStore } from "./activityStore";
 import { formatVirtualTime } from "./clock";
 import { useClockTimeStore } from "./clockStore";
-import { dhcpStatusClass, parseDhcpLease } from "./dhcpLease";
+import { parseDhcpLease } from "./dhcpLease";
 import type { NetworkNode as NetworkNodeType } from "./topology";
 
 export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
@@ -19,7 +19,7 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
       <span>{data.snapshot.type}</span>
       <small>{power}</small>
       {lease?.address && (
-        <small className={`node-dhcp ${dhcpStatusClass(lease)}`}>
+        <small className="node-dhcp">
           {lease.address}
           {lease.remainingMs !== null && ` · ${formatVirtualTime(lease.remainingMs)}`}
         </small>
