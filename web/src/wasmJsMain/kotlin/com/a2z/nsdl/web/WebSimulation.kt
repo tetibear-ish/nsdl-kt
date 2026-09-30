@@ -19,11 +19,11 @@ import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.sim.VirtualScheduler
 import kotlin.time.Duration.Companion.milliseconds
 
-external fun startNsdl(execute: (String) -> String, graph: () -> String)
+external fun startNsdl(execute: (String) -> String, graph: () -> String, command: (String) -> String)
 
 fun main() {
     val simulation = WebSimulation()
-    startNsdl(simulation::execute, simulation::graphJson)
+    startNsdl(simulation::execute, simulation::graphJson, simulation::executeRequest)
 }
 
 /** Browser-local command boundary. It mirrors the terminal shell without JVM sockets or threads. */
@@ -52,6 +52,54 @@ class WebSimulation(seed: Long = 0L) {
         val snapshots = (service.handle(Command.ListObjects) as CommandResult.Ok).data
         return Json.write(toWire(snapshots))
     }
+
+    /** Executes the versioned JSON command envelope used by the React transport. */
+    fun executeRequest(request: String): String = try {
+        val root = Json.parse(request) as? Map<*, *> ?: error("request must be a JSON object")
+        require(root["v"] == 1L) { "unsupported version: ${root["v"]}" }
+        val op = root["op"] as? String ?: error("missing 'op'")
+        @Suppress("UNCHECKED_CAST")
+        val params = root["params"] as? Map<String, Any?> ?: emptyMap()
+        encode(service.handle(parseOperation(op, params)))
+    } catch (e: Throwable) {
+        Json.write(mapOf("ok" to false, "error" to mapOf("code" to "INVALID_REQUEST", "message" to (e.message ?: "invalid request"))))
+    }
+
+    private fun parseOperation(op: String, params: Map<String, Any?>): Command = when (op) {
+        "listTypes" -> Command.ListTypes
+        "listObjects" -> Command.ListObjects
+        "inspect" -> Command.Inspect(stringParam(params, "id"))
+        "create" -> Command.Create(stringParam(params, "id"), stringParam(params, "type"), propsParam(params))
+        "applyTopology" -> {
+            @Suppress("UNCHECKED_CAST")
+            val objects = params["objects"] as? List<Map<String, Any?>> ?: emptyList()
+            @Suppress("UNCHECKED_CAST")
+            val connections = params["connections"] as? List<Map<String, Any?>> ?: emptyList()
+            Command.ApplyTopology(
+                objects.map { Command.Create(stringParam(it, "id"), stringParam(it, "type"), propsParam(it)) } +
+                    connections.map {
+                        Command.Connect(stringParam(it, "cableId"), EndpointRef(stringParam(it, "a")), EndpointRef(stringParam(it, "b")))
+                    },
+            )
+        }
+        "connect" -> Command.Connect(stringParam(params, "cableId"), EndpointRef(stringParam(params, "a")), EndpointRef(stringParam(params, "b")))
+        "disconnect" -> Command.Disconnect(stringParam(params, "cableId"))
+        "configure" -> Command.Configure(stringParam(params, "id"), propsParam(params))
+        "powerOn" -> Command.PowerOn(stringParam(params, "id"))
+        "powerOff" -> Command.PowerOff(stringParam(params, "id"))
+        "advance" -> Command.Advance(longParam(params, "durationMs").milliseconds)
+        else -> error("unknown op '$op'")
+    }
+
+    private fun stringParam(params: Map<String, Any?>, name: String): String =
+        params[name] as? String ?: error("missing or non-string param '$name'")
+
+    private fun longParam(params: Map<String, Any?>, name: String): Long =
+        params[name] as? Long ?: error("missing or non-integer param '$name'")
+
+    @Suppress("UNCHECKED_CAST")
+    private fun propsParam(params: Map<String, Any?>): Map<String, Any?> =
+        params["props"] as? Map<String, Any?> ?: emptyMap()
 
     private fun newService(seed: Long): SimulationService {
         val registry = TypeRegistry().apply {

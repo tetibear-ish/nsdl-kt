@@ -4,9 +4,10 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc -b && vite build",
-    "test": "vitest run"
+    "dev": "vite --config vite.config.ts",
+    "build": "tsc -b && vite build --config vite.config.ts",
+    "build:static": "../gradlew -p .. :web:wasmJsBrowserDistribution && node scripts/copy-wasm.mjs && npm run build",
+    "test": "vitest run --config vite.config.ts"
   },
   "dependencies": {
     "@xyflow/react": "12.12.0",

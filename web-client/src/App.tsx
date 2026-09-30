@@ -16,11 +16,11 @@ import { AddObjectDialog } from "./AddObjectDialog";
 import { NetworkNode } from "./NetworkNode";
 import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
-import { RemoteTransport, type SimulationTransport } from "./transport";
+import { selectTransport, type SimulationTransport } from "./transport";
 import type { ObjectTypeSchema } from "./types";
 
 const nodeTypes = { network: NetworkNode };
-const defaultTransport = new RemoteTransport();
+const defaultTransport = selectTransport();
 
 export function App({ transport = defaultTransport }: { transport?: SimulationTransport }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<NetworkNodeType>([]);

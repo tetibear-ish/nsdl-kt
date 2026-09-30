@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { RemoteTransport } from "./transport";
+import { BrowserWasmTransport, RemoteTransport, selectTransport } from "./transport";
 
 describe("RemoteTransport", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -18,5 +18,20 @@ describe("RemoteTransport", () => {
     const secondBody = JSON.parse(fetchMock.mock.calls[1][1]?.body as string);
     expect(firstBody.id).toMatch(/^web-[0-9a-f-]{36}$/);
     expect(secondBody.id).not.toBe(firstBody.id);
+  });
+});
+
+describe("BrowserWasmTransport", () => {
+  it("passes versioned commands to the browser-local bridge and decodes results", async () => {
+    const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 2, changed: false, data: [] }));
+    const transport = new BrowserWasmTransport(Promise.resolve({ command }));
+
+    await expect(transport.listObjects()).resolves.toEqual({ ok: true, revision: 2, changed: false, data: [] });
+    expect(JSON.parse(command.mock.calls[0][0])).toMatchObject({ v: 1, op: "listObjects", params: {} });
+  });
+
+  it("selects local Wasm for static hosting and the server for explicit remote mode", () => {
+    expect(selectTransport("?runtime=wasm")).toBeInstanceOf(BrowserWasmTransport);
+    expect(selectTransport("?runtime=server")).toBeInstanceOf(RemoteTransport);
   });
 });

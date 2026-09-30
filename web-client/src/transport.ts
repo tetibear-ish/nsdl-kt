@@ -55,3 +55,37 @@ export class RemoteTransport implements SimulationTransport {
     return () => source.close();
   }
 }
+
+export type WasmBridge = { command(request: string): string };
+
+declare global {
+  interface Window { nsdlWasmReady?: Promise<WasmBridge> }
+}
+
+export class BrowserWasmTransport implements SimulationTransport {
+  private readonly listeners = new Set<(event: SimulationEvent) => void>();
+  private readonly ready: Promise<WasmBridge>;
+
+  constructor(ready?: Promise<WasmBridge>) {
+    this.ready = ready ?? window.nsdlWasmReady ?? new Promise(() => {});
+  }
+
+  async execute<T = unknown>(op: string, params: Record<string, unknown> = {}): Promise<CommandResult<T>> {
+    const bridge = await this.ready;
+    const result = JSON.parse(bridge.command(JSON.stringify({ v: 1, op, params }))) as CommandResult<T>;
+    if (result.ok && result.changed) this.listeners.forEach((listener) => listener({ type: "event" }));
+    return result;
+  }
+
+  listTypes() { return this.execute<ObjectTypeSchema[]>("listTypes"); }
+  listObjects() { return this.execute<ObjectSnapshot[]>("listObjects"); }
+
+  subscribe(_from: number, listener: (event: SimulationEvent) => void): () => void {
+    this.listeners.add(listener);
+    return () => this.listeners.delete(listener);
+  }
+}
+
+export function selectTransport(search = window.location.search): SimulationTransport {
+  return new URLSearchParams(search).get("runtime") === "server" ? new RemoteTransport() : new BrowserWasmTransport();
+}
