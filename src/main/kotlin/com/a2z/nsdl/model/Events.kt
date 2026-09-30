@@ -8,6 +8,7 @@ import com.a2z.nsdl.net.Ipv4Packet
  * Typed event payloads. Semantics (source = the object the event is about):
  *
  * - [ObjectCreated]: an object was registered.
+ * - [ObjectDeleted]: an object was removed, including one cascaded away by deleting its owner.
  * - [PowerOnStarted] (onPowerOn): power applied, boot began. The device cannot communicate yet.
  * - [BootCompleted]: boot finished; interfaces enabled, services started.
  * - [PoweredOff] (onPowerOff): power removed; services stopped, interfaces disabled, pending work invalidated.
@@ -25,6 +26,7 @@ sealed interface EventPayload {
     val name: String get() = this::class.simpleName!!
 
     data class ObjectCreated(val type: String, val kind: ObjectKind) : EventPayload
+    data class ObjectDeleted(val type: String, val kind: ObjectKind) : EventPayload
     data class PowerOnStarted(val generation: Long) : EventPayload
     data class BootCompleted(val generation: Long) : EventPayload
     data class PoweredOff(val generation: Long, val previous: PowerState) : EventPayload
@@ -41,7 +43,7 @@ sealed interface EventPayload {
 
     companion object {
         val NAMES: Set<String> = setOf(
-            "ObjectCreated", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
+            "ObjectCreated", "ObjectDeleted", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
             "LinkStateChanged", "FrameSent", "FrameReceived", "FrameDropped", "PacketAccepted",
             "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged",
         )

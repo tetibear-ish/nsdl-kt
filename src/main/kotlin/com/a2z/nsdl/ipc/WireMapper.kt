@@ -7,6 +7,7 @@ import com.a2z.nsdl.model.EventPayload
 object WireMapper {
     fun toData(payload: EventPayload): Map<String, Any?> = when (payload) {
         is EventPayload.ObjectCreated -> mapOf("type" to payload.type, "kind" to payload.kind.name)
+        is EventPayload.ObjectDeleted -> mapOf("type" to payload.type, "kind" to payload.kind.name)
         is EventPayload.PowerOnStarted -> mapOf("generation" to payload.generation)
         is EventPayload.BootCompleted -> mapOf("generation" to payload.generation)
         is EventPayload.PoweredOff -> mapOf("generation" to payload.generation, "previous" to payload.previous.name)

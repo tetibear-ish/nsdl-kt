@@ -25,4 +25,6 @@ sealed interface Command {
     data object ListTypes : Command
     data object ListObjects : Command
     data class Inspect(val id: String) : Command
+    /** Deleting a device atomically deletes every cable attached to any of its endpoints too. */
+    data class Delete(val id: String) : Command
 }

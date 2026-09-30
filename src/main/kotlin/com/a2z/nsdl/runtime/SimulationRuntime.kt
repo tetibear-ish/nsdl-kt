@@ -55,7 +55,7 @@ class InputJournal {
         /** Advance is included: without replaying it, no scheduled work would ever run during replay. */
         fun isMutating(command: Command): Boolean = when (command) {
             is Command.Create, is Command.ApplyTopology, is Command.Connect, is Command.Disconnect,
-            is Command.Configure, is Command.PowerOn, is Command.PowerOff, is Command.Advance,
+            is Command.Configure, is Command.PowerOn, is Command.PowerOff, is Command.Advance, is Command.Delete,
             -> true
             Command.ListTypes, Command.ListObjects, is Command.Inspect -> false
         }

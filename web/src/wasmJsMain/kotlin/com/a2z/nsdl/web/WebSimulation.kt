@@ -87,6 +87,7 @@ class WebSimulation(seed: Long = 0L) {
         "configure" -> Command.Configure(stringParam(params, "id"), propsParam(params))
         "powerOn" -> Command.PowerOn(stringParam(params, "id"))
         "powerOff" -> Command.PowerOff(stringParam(params, "id"))
+        "delete" -> Command.Delete(stringParam(params, "id"))
         "advance" -> Command.Advance(longParam(params, "durationMs").milliseconds)
         else -> error("unknown op '$op'")
     }
@@ -129,6 +130,10 @@ class WebSimulation(seed: Long = 0L) {
         "inspect" -> {
             require(words.size == 2) { "usage: inspect ID" }
             Command.Inspect(words[1])
+        }
+        "delete" -> {
+            require(words.size == 2) { "usage: delete ID" }
+            Command.Delete(words[1])
         }
         "power-on", "power-off" -> {
             require(words.size == 2) { "usage: ${words[0]} ID" }
@@ -198,7 +203,7 @@ class WebSimulation(seed: Long = 0L) {
             types | list | inspect ID
             create TYPE ID [PROPERTY=VALUE ...]
             connect CABLE ENDPOINT_A ENDPOINT_B | disconnect CABLE
-            power-on ID | power-off ID | advance MILLISECONDS
+            power-on ID | power-off ID | delete ID | advance MILLISECONDS
             reset [SEED]
         """.trimIndent()
     }

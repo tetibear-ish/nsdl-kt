@@ -2,6 +2,7 @@ package com.a2z.nsdl.app
 
 import com.a2z.nsdl.app.types.Cat5CableType
 import com.a2z.nsdl.app.types.DhcpServerHostType
+import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
 import com.a2z.nsdl.device.HostBuilder
 import com.a2z.nsdl.link.MediaType
@@ -336,5 +337,109 @@ class SimulationServiceTest {
         ok(create("printer1", "printer"))
         val result = ok(service.handle(Command.Inspect("printer1.dhcp-client")))
         assertEquals(ObjectId("printer1.dhcp-client"), (result.data as ObjectSnapshot).id)
+    }
+
+    // -- Delete --
+
+    @Test
+    fun `deleting an unknown object is rejected as UNKNOWN_OBJECT`() {
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Delete("nope"))).code)
+    }
+
+    @Test
+    fun `deleting with an invalid id is rejected as INVALID_ID`() {
+        assertEquals(ErrorCode.INVALID_ID, rejected(service.handle(Command.Delete("bad id!"))).code)
+    }
+
+    @Test
+    fun `deleting a standalone object removes it, so a later inspect is UNKNOWN_OBJECT`() {
+        ok(create("printer1", "printer"))
+
+        val result = ok(service.handle(Command.Delete("printer1")))
+        assertTrue(result.changed)
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Inspect("printer1"))).code)
+    }
+
+    @Test
+    fun `deleting the same object twice -- the second delete is UNKNOWN_OBJECT, not a silent no-op`() {
+        ok(create("printer1", "printer"))
+        ok(service.handle(Command.Delete("printer1")))
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Delete("printer1"))).code)
+    }
+
+    @Test
+    fun `a deleted id can be reused by a later create`() {
+        ok(create("printer1", "printer"))
+        ok(service.handle(Command.Delete("printer1")))
+
+        val result = ok(create("printer1", "printer"))
+        assertEquals(ObjectId("printer1"), (result.data as ObjectSnapshot).id)
+    }
+
+    @Test
+    fun `deleting a connected cable disconnects it first`() {
+        val (cable, printerEth0) = wirePrinterAndCable()
+        ok(service.handle(Command.Connect(cable, EndpointRef(printerEth0), EndpointRef("server1.eth0"))))
+
+        ok(service.handle(Command.Delete(cable)))
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Disconnect(cable))).code)
+    }
+
+    @Test
+    fun `deleting a device with no cables attached removes only that device`() {
+        ok(create("printer1", "printer"))
+        ok(create("cable1", "cat5-cable"))
+
+        val result = ok(service.handle(Command.Delete("printer1")))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(listOf("printer1"), (result.data as Map<String, Any?>)["deleted"])
+
+        ok(service.handle(Command.Inspect("cable1")))
+    }
+
+    @Test
+    fun `deleting a device atomically deletes its attached cable too`() {
+        val (cable, printerEth0) = wirePrinterAndCable()
+        ok(service.handle(Command.Connect(cable, EndpointRef(printerEth0), EndpointRef("server1.eth0"))))
+
+        val result = ok(service.handle(Command.Delete("printer1")))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(setOf("printer1", cable), (result.data as Map<String, Any?>)["deleted"].let { (it as List<*>).toSet() })
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Inspect(cable))).code, "the cable itself is gone, not just disconnected")
+    }
+
+    @Test
+    fun `deleting a multi-port device removes every cable attached to any of its ports, leaving the peers intact`() {
+        registry.register(EthernetSwitchType)
+        ok(create("switch1", "ethernet-switch"))
+        ok(create("printer1", "printer"))
+        ok(create("printer2", "printer", mapOf("mac" to "02:00:00:00:00:99")))
+        ok(create("cable1", "cat5-cable"))
+        ok(create("cable2", "cat5-cable"))
+        ok(service.handle(Command.Connect("cable1", EndpointRef("switch1.port1"), EndpointRef("printer1.eth0"))))
+        ok(service.handle(Command.Connect("cable2", EndpointRef("switch1.port2"), EndpointRef("printer2.eth0"))))
+
+        val result = ok(service.handle(Command.Delete("switch1")))
+        @Suppress("UNCHECKED_CAST")
+        assertEquals(setOf("switch1", "cable1", "cable2"), ((result.data as Map<String, Any?>)["deleted"] as List<*>).toSet())
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Inspect("cable1"))).code)
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.Inspect("cable2"))).code)
+        ok(service.handle(Command.Inspect("printer1")))
+        ok(service.handle(Command.Inspect("printer2")))
+    }
+
+    @Test
+    fun `deleting a powered-on device powers it off first, so its lifecycle cleans up before removal`() {
+        ok(create("printer1", "printer", mapOf("bootMs" to 3000L)))
+        ok(service.handle(Command.PowerOn("printer1")))
+
+        ok(service.handle(Command.Delete("printer1")))
+
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.PowerOff("printer1"))).code)
     }
 }

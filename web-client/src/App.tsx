@@ -27,6 +27,9 @@ import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
 import { selectTransport, type SimulationTransport } from "./transport";
 import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
+import { UndoStack } from "./undoStack";
+
+const UNDO_CAPACITY = 50;
 
 const nodeTypes = { network: NetworkNode };
 const defaultTransport = selectTransport();
@@ -47,7 +50,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const setPosition = useEditorStore((state) => state.setPosition);
   const records = useEditorStore((state) => state.records);
   const setRecord = useEditorStore((state) => state.setRecord);
+  const removeRecord = useEditorStore((state) => state.removeRecord);
   const importInput = useRef<HTMLInputElement | null>(null);
+  const undoStack = useRef(new UndoStack(UNDO_CAPACITY));
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -110,12 +115,22 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       connections: [{ cableId, a: connection.sourceHandle, b: connection.targetHandle }],
     });
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
-    if (result.ok) setRecord(cableId, { type: "cat5-cable", props: {} });
+    if (result.ok) {
+      setRecord(cableId, { type: "cat5-cable", props: {} });
+      undoStack.current.push({
+        description: `connect ${connection.sourceHandle} ↔ ${connection.targetHandle}`,
+        undo: async () => {
+          await transport.execute("delete", { id: cableId });
+          removeRecord(cableId);
+          await refresh();
+        },
+      });
+    }
     setLog((entries) => [...entries.slice(-99), result.ok
       ? `connected ${connection.sourceHandle} ↔ ${connection.targetHandle}`
       : `connect failed: ${result.error.message}`]);
     await refresh();
-  }, [refresh, setRecord, transport]);
+  }, [refresh, removeRecord, setRecord, transport]);
 
   const disconnecting = useRef(new Set<string>());
   const disconnect = useCallback(async (edge: Edge) => {
@@ -123,6 +138,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     disconnecting.current.add(edge.id);
     const result = await transport.execute("disconnect", { cableId: edge.id });
     disconnecting.current.delete(edge.id);
+    if (result.ok && edge.sourceHandle && edge.targetHandle) {
+      const { sourceHandle, targetHandle } = edge;
+      undoStack.current.push({
+        description: `disconnect ${edge.id}`,
+        undo: async () => {
+          await transport.execute("connect", { cableId: edge.id, a: sourceHandle, b: targetHandle });
+          await refresh();
+        },
+      });
+    }
     setLog((entries) => [...entries.slice(-99), result.ok ? `disconnected ${edge.id}` : `disconnect failed: ${result.error.message}`]);
     await refresh();
   }, [refresh, transport]);
@@ -134,9 +159,55 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setLog((entries) => [...entries.slice(-99), `created ${type.name} ${id}`]);
     setPosition(id, placement.current);
     setRecord(id, { type: type.name, props: cleaned });
+    undoStack.current.push({
+      description: `create ${id}`,
+      undo: async () => {
+        await transport.execute("delete", { id });
+        removeRecord(id);
+        await refresh();
+      },
+    });
     await refresh();
     return null;
-  }, [refresh, setPosition, setRecord, transport]);
+  }, [refresh, removeRecord, setPosition, setRecord, transport]);
+
+  const deleteObject = useCallback(async (id: string) => {
+    const cascadedEdges = edges.filter((edge) => edge.source === id || edge.target === id);
+    const preview = cascadedEdges.length > 0
+      ? `Delete ${id}? This will also remove ${cascadedEdges.length} attached cable(s): ${cascadedEdges.map((edge) => edge.id).join(", ")}`
+      : `Delete ${id}?`;
+    if (!window.confirm(preview)) return;
+
+    const result = await transport.execute<{ deleted: string[] }>("delete", { id });
+    if (!result.ok) {
+      setStatus(`${result.error.code}: ${result.error.message}`);
+      setLog((entries) => [...entries.slice(-99), `delete ${id} failed: ${result.error.message}`]);
+      return;
+    }
+
+    const removed = result.data.deleted.map((removedId) => ({ id: removedId, record: records[removedId] }));
+    const removedConnections = cascadedEdges.map((edge) => ({ cableId: edge.id, a: edge.sourceHandle ?? "", b: edge.targetHandle ?? "" }));
+    undoStack.current.push({
+      description: `delete ${id}`,
+      undo: async () => {
+        const objectsToRecreate = removed.flatMap((entry) => entry.record ? [{ id: entry.id, type: entry.record.type, props: entry.record.props }] : []);
+        if (objectsToRecreate.length === 0) return;
+        await transport.execute("applyTopology", { objects: objectsToRecreate, connections: removedConnections });
+        objectsToRecreate.forEach((object) => setRecord(object.id, { type: object.type, props: object.props }));
+        await refresh();
+      },
+    });
+    removed.forEach((entry) => removeRecord(entry.id));
+    pinnedInspection.current = null;
+    setInspected([]);
+    setLog((entries) => [...entries.slice(-99), `deleted ${result.data.deleted.join(", ")}`]);
+    await refresh();
+  }, [edges, records, refresh, removeRecord, setRecord, transport]);
+
+  const undo = useCallback(async () => {
+    const description = await undoStack.current.undo();
+    setLog((entries) => [...entries.slice(-99), description ? `undid: ${description}` : "nothing to undo"]);
+  }, []);
 
   const saveLab = useCallback(() => {
     const doc = buildDocument(
@@ -207,6 +278,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <div className="toolbar-actions">
           <output>{status}</output>
           <button onClick={() => openAddAt()}>Add…</button>
+          <button className="secondary" onClick={() => { void undo(); }}>Undo</button>
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="secondary icon-button" aria-label="Lab options">⋯</button>
@@ -255,7 +327,13 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
-          onNodeDragStop={(_event, node) => setPosition(node.id, node.position)}
+          onNodeDragStop={(_event, node) => {
+            const from = positions[node.id];
+            setPosition(node.id, node.position);
+            if (from && (from.x !== node.position.x || from.y !== node.position.y)) {
+              undoStack.current.push({ description: `move ${node.id}`, undo: () => setPosition(node.id, from) });
+            }
+          }}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
           onPaneClick={() => { pinnedInspection.current = null; setInspected([]); }}
@@ -276,10 +354,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
               <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>
             </section>
           ))}
-        {inspected[0]?.kind === "CABLE" && <button onClick={() => {
-          const edge = edges.find((candidate) => candidate.id === inspected[0].id);
-          if (edge) void disconnect(edge);
-        }}>Disconnect</button>}
+        {inspected[0]?.kind === "CABLE" && <>
+          <button onClick={() => {
+            const edge = edges.find((candidate) => candidate.id === inspected[0].id);
+            if (edge) void disconnect(edge);
+          }}>Disconnect</button>
+          <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
+        </>}
+        {inspected[0]?.kind === "DEVICE" && (
+          <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
+        )}
       </aside>
       </div>
       <section className="activity-log" aria-label="Activity log">

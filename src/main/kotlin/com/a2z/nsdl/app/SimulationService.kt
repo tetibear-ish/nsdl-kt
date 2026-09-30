@@ -54,6 +54,7 @@ class SimulationService(
         Command.ListTypes -> CommandResult.Ok(registry.list())
         Command.ListObjects -> CommandResult.Ok(objects.values.map { it.obj.root.snapshot() })
         is Command.Inspect -> handleInspect(command)
+        is Command.Delete -> handleDelete(command)
     }
 
     private fun handleCreate(cmd: Command.Create): CommandResult {
@@ -227,6 +228,39 @@ class SimulationService(
         val target = objects[id]?.obj?.root
             ?: objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
         return target?.let { CommandResult.Ok(it.snapshot()) } ?: unknownObject(cmd.id)
+    }
+
+    /**
+     * Deleting a device atomically deletes every cable attached to any of its endpoints too --
+     * those cables are genuinely removed, not just disconnected. Deleting a cable just disconnects
+     * and removes itself. A powered device is powered off first so its lifecycle (WorkScope,
+     * timers) cleans up through the same path a normal power-off uses.
+     */
+    private fun handleDelete(cmd: Command.Delete): CommandResult {
+        if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
+        val id = ObjectId(cmd.id)
+        val registered = objects[id] ?: return unknownObject(cmd.id)
+
+        val cascadedCableIds = if (registered.obj.cable == null) {
+            val ownEndpointIds = registered.obj.endpoints.map { it.id }.toSet()
+            objects.filterValues { r ->
+                r.obj.cable?.endpoints?.let { (a, b) -> a.id in ownEndpointIds || b.id in ownEndpointIds } == true
+            }.keys.toList()
+        } else {
+            emptyList()
+        }
+
+        registered.obj.power?.powerOff()
+        cascadedCableIds.forEach { deleteOne(it) }
+        deleteOne(id)
+
+        return CommandResult.Ok(mapOf("deleted" to (listOf(id.value) + cascadedCableIds.map { it.value })))
+    }
+
+    private fun deleteOne(id: ObjectId) {
+        val registered = objects.remove(id) ?: return
+        registered.obj.cable?.let { if (it.isConnected) it.disconnect() }
+        events.emit(id, EventPayload.ObjectDeleted(registered.type.schema.name, registered.type.schema.kind))
     }
 
     private fun resolveEndpoint(ref: EndpointRef): LinkEndpoint? =

@@ -68,6 +68,7 @@ object RequestCodec {
         "configure" -> IpcOperation.Run(Command.Configure(stringParam(params, "id"), propsParam(params, "props")))
         "powerOn" -> IpcOperation.Run(Command.PowerOn(stringParam(params, "id")))
         "powerOff" -> IpcOperation.Run(Command.PowerOff(stringParam(params, "id")))
+        "delete" -> IpcOperation.Run(Command.Delete(stringParam(params, "id")))
         "advance" -> IpcOperation.Run(Command.Advance(longParam(params, "durationMs").milliseconds))
         "subscribe" -> IpcOperation.Subscribe(
             filter = EventFilter(

@@ -95,6 +95,12 @@ class RequestCodecTest {
     }
 
     @Test
+    fun `decodes delete with an id`() {
+        val result = RequestCodec.decode("""{"v":1,"id":"r1","op":"delete","params":{"id":"printer1"}}""")
+        assertEquals(DecodeResult.Decoded("r1", IpcOperation.Run(Command.Delete("printer1"))), result)
+    }
+
+    @Test
     fun `decodes applyTopology as a batch of Create then Connect commands`() {
         val result = RequestCodec.decode(
             """{"v":1,"id":"r1","op":"applyTopology","params":{
