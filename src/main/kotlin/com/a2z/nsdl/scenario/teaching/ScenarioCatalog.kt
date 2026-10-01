@@ -6,5 +6,6 @@ import com.a2z.nsdl.scenario.Scenario
 object ScenarioCatalog {
     val all: Map<String, () -> Scenario> = mapOf(
         "print-job" to ::printJobScenario,
+        "ssh-session" to ::sshSessionScenario,
     )
 }
