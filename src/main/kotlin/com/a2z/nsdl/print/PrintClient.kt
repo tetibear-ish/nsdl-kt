@@ -2,6 +2,8 @@ package com.a2z.nsdl.print
 
 import com.a2z.nsdl.device.DeviceService
 import com.a2z.nsdl.ip.UdpTransport
+import com.a2z.nsdl.model.ActionOutcome
+import com.a2z.nsdl.model.Actionable
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.ObjectSnapshot
@@ -20,7 +22,7 @@ data class OutgoingPrintJob(
     val detail: String = "",
 )
 
-class PrintClient(override val id: ObjectId, private val transport: UdpTransport) : DeviceService {
+class PrintClient(override val id: ObjectId, private val transport: UdpTransport) : DeviceService, Actionable {
     private var started = false
     private val mutableJobs = linkedMapOf<String, OutgoingPrintJob>()
     val jobs: List<OutgoingPrintJob> get() = mutableJobs.values.toList()
@@ -63,6 +65,29 @@ class PrintClient(override val id: ObjectId, private val transport: UdpTransport
         if (!send(printerAddress, printerMac, PrintMessage.Complete(jobId))) return fail(jobId)
         mutableJobs[jobId] = mutableJobs.getValue(jobId).copy(status = PrintJobStatus.AWAITING_REPLY)
         return true
+    }
+
+    /** The only scripted action: "submit" forwards its params to [submit]. Invalid params reject, never throw. */
+    override fun perform(action: String, params: Map<String, Any?>): ActionOutcome {
+        if (action != "submit") return ActionOutcome(accepted = false, detail = "unknown action '$action'")
+        val jobId = params["jobId"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'jobId'")
+        val documentName = params["documentName"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'documentName'")
+        val bytes = (params["bytes"] as? Number)?.toInt() ?: return ActionOutcome(accepted = false, detail = "missing 'bytes'")
+        val printerAddress = params["printerAddress"] as? Ipv4Address ?: return ActionOutcome(accepted = false, detail = "missing 'printerAddress'")
+        val printerMac = params["printerMac"] as? MacAddress ?: return ActionOutcome(accepted = false, detail = "missing 'printerMac'")
+        val chunkSize = (params["chunkSize"] as? Number)?.toInt() ?: 1_000
+
+        val accepted = try {
+            submit(jobId, documentName, bytes, printerAddress, printerMac, chunkSize)
+        } catch (e: IllegalArgumentException) {
+            return ActionOutcome(accepted = false, detail = e.message ?: "invalid submit params")
+        }
+        val job = mutableJobs[jobId]
+        return ActionOutcome(
+            accepted = accepted,
+            detail = if (accepted) "job '$jobId' submitted" else job?.detail ?: "job '$jobId' was not accepted",
+            data = mapOf("jobId" to jobId, "status" to (job?.status?.name ?: PrintJobStatus.REJECTED.name)),
+        )
     }
 
     private fun send(dst: Ipv4Address, mac: MacAddress, message: PrintMessage) =
