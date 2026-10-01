@@ -44,6 +44,7 @@ describe("projectTopology", () => {
         targetHandle: "switch1.port1",
         data: { snapshot: snapshots[2] },
         className: "topology-edge link-down",
+        selectable: false,
       }),
     ]);
   });
