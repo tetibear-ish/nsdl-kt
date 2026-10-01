@@ -33,7 +33,7 @@ describe("NetworkNode gateway lease table", () => {
 
     expect(screen.getByRole("columnheader", { name: "Address" })).toBeInTheDocument();
     expect(screen.getByRole("columnheader", { name: "MAC address" })).toBeInTheDocument();
-    expect(screen.getByRole("columnheader", { name: "Lease remaining" })).toBeInTheDocument();
+    expect(screen.getByRole("columnheader", { name: "Lease" })).toBeInTheDocument();
     const waiting = screen.getByText("Waiting for DHCP Broadcast...");
     expect(waiting).toHaveAttribute("colspan", "3");
   });

@@ -38,7 +38,7 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
             <tr>
               <th scope="col">Address</th>
               <th scope="col">MAC address</th>
-              <th scope="col">Lease remaining</th>
+              <th scope="col">Lease</th>
             </tr>
           </thead>
           <tbody>
