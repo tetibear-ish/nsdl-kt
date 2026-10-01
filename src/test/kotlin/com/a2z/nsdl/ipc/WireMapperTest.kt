@@ -1,6 +1,10 @@
 package com.a2z.nsdl.ipc
 
 import com.a2z.nsdl.ip.toState
+import com.a2z.nsdl.dhcp.BootOp
+import com.a2z.nsdl.dhcp.DhcpMessage
+import com.a2z.nsdl.dhcp.DhcpMessageType
+import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.model.DropReason
 import com.a2z.nsdl.model.DecisionAction
 import com.a2z.nsdl.model.DecisionParents
@@ -10,6 +14,7 @@ import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.PowerState
 import com.a2z.nsdl.model.Responsibility
+import com.a2z.nsdl.model.TransitOutcome
 import com.a2z.nsdl.net.ConfigSource
 import com.a2z.nsdl.net.EthernetFrame
 import com.a2z.nsdl.net.Ipv4Address
@@ -142,5 +147,28 @@ class WireMapperTest {
         )
 
         assertEquals(mapOf("record" to record.toState()), WireMapper.toData(EventPayload.DecisionRecorded(record)))
+    }
+
+    @Test
+    fun `maps PacketObserved with direction, causal id and the frame's decoded packet fields`() {
+        val discover = DhcpMessage(BootOp.REQUEST, DhcpMessageType.DISCOVER, xid = 7, chaddr = mac1)
+        val dhcpFrame = EthernetFrame(mac1, MacAddress.BROADCAST, Ipv4Packet(Ipv4Address.ANY, Ipv4Address.BROADCAST, UdpDatagram(68, 67, discover)))
+        val observed = EventPayload.PacketObserved(
+            transitId = "cable1:t1", sentAtMs = 1500, from = ObjectId("a.eth0"), to = ObjectId("b.eth0"),
+            frame = dhcpFrame, outcome = TransitOutcome.DROPPED, dropReason = DropReason.DISCONNECTED_IN_FLIGHT,
+        )
+
+        val data = WireMapper.toData(observed)
+
+        assertEquals("cable1:t1", data["transitId"])
+        assertEquals(1500L, data["sentAtMs"])
+        assertEquals("a.eth0", data["from"])
+        assertEquals("b.eth0", data["to"])
+        assertEquals(mac1.toString(), data["sourceMac"])
+        assertEquals(MacAddress.BROADCAST.toString(), data["destMac"])
+        assertEquals("DROPPED", data["outcome"])
+        assertEquals("DISCONNECTED_IN_FLIGHT", data["dropReason"])
+        // The decoded packet fields (including DHCP) come from the single shared decoder, not reconstructed here.
+        PacketDecoder.decode(dhcpFrame).forEach { (key, value) -> assertEquals(value, data[key]) }
     }
 }

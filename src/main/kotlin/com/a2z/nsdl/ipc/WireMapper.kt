@@ -1,5 +1,6 @@
 package com.a2z.nsdl.ipc
 
+import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.ip.toState
 import com.a2z.nsdl.model.EventPayload
 
@@ -22,5 +23,16 @@ object WireMapper {
         is EventPayload.NetworkConfigChanged -> mapOf("config" to payload.config?.toState())
         is EventPayload.ConfigurationChanged -> mapOf("properties" to payload.properties)
         is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
+        is EventPayload.PacketObserved -> mapOf(
+            "transitId" to payload.transitId,
+            "sentAtMs" to payload.sentAtMs,
+            "from" to payload.from.value,
+            "to" to payload.to.value,
+            "sourceMac" to payload.frame.src.toString(),
+            "destMac" to payload.frame.dst.toString(),
+            "frame" to payload.frame.describe(),
+            "outcome" to payload.outcome.name,
+            "dropReason" to payload.dropReason?.name,
+        ) + PacketDecoder.decode(payload.frame)
     }
 }

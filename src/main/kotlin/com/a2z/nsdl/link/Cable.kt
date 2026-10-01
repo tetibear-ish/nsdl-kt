@@ -7,7 +7,12 @@ import com.a2z.nsdl.model.Inspectable
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.ObjectSnapshot
+import com.a2z.nsdl.model.TransitOutcome
 import com.a2z.nsdl.net.EthernetFrame
+import com.a2z.nsdl.net.Ipv4Packet
+import com.a2z.nsdl.net.UdpDatagram
+import com.a2z.nsdl.net.UdpPayload
+import com.a2z.nsdl.net.decodeEnvelope
 import com.a2z.nsdl.sim.Scheduler
 
 /**
@@ -24,10 +29,17 @@ class Cable(
     private val scheduler: Scheduler,
     private val events: EventSink,
     val type: String = "cat5-cable",
+    private val historyCapacity: Int = DEFAULT_HISTORY_CAPACITY,
+    /** Decodes an application payload (e.g. DHCP) for the packet-layer view; link stays protocol-agnostic. */
+    private val describePayload: (UdpPayload) -> Map<String, Any?> = { emptyMap() },
 ) : Medium, Inspectable {
+    init { require(historyCapacity > 0) { "history capacity must be positive" } }
+
     var endpoints: Pair<LinkEndpoint, LinkEndpoint>? = null
         private set
     private var epoch = 0L
+    private val history = mutableListOf<EventPayload.PacketObserved>()
+    private var nextTransit = 0L
 
     val isConnected get() = endpoints != null
 
@@ -70,10 +82,58 @@ class Cable(
         val (a, b) = endpoints ?: return
         val to = if (from === a) b else a
         val sentInEpoch = epoch
+        val sentAtMs = scheduler.now.millis
+        val transitId = "${id.value}:t${++nextTransit}"
         scheduler.schedule(profile.propagationDelay) {
-            if (epoch != sentInEpoch) events.emit(id, EventPayload.FrameDropped(frame, DropReason.DISCONNECTED_IN_FLIGHT))
-            else to.receive(frame)
+            if (epoch != sentInEpoch) {
+                events.emit(id, EventPayload.FrameDropped(frame, DropReason.DISCONNECTED_IN_FLIGHT))
+                recordTransit(transitId, sentAtMs, from.id, to.id, frame, TransitOutcome.DROPPED, DropReason.DISCONNECTED_IN_FLIGHT)
+            } else {
+                to.receive(frame)
+                recordTransit(transitId, sentAtMs, from.id, to.id, frame, TransitOutcome.DELIVERED)
+            }
         }
+    }
+
+    private fun recordTransit(
+        transitId: String,
+        sentAtMs: Long,
+        from: ObjectId,
+        to: ObjectId,
+        frame: EthernetFrame,
+        outcome: TransitOutcome,
+        dropReason: DropReason? = null,
+    ) {
+        val observed = EventPayload.PacketObserved(transitId, sentAtMs, from, to, frame, outcome, dropReason)
+        history += observed
+        if (history.size > historyCapacity) history.removeAt(0)
+        events.emit(id, observed)
+    }
+
+    private fun frameView(r: EventPayload.PacketObserved): Map<String, Any?> = mapOf(
+        "id" to r.transitId,
+        "sentAtMs" to r.sentAtMs,
+        "from" to r.from.value,
+        "to" to r.to.value,
+        "sourceMac" to r.frame.src.toString(),
+        "destMac" to r.frame.dst.toString(),
+        "etherType" to "0x" + r.frame.etherType.toString(16).padStart(4, '0'),
+        "outcome" to r.outcome.name,
+        "dropReason" to r.dropReason?.name,
+    )
+
+    /** Null when the frame carries no IPv4 packet; otherwise the same [r.transitId] as its frame-view entry. */
+    private fun packetView(r: EventPayload.PacketObserved): Map<String, Any?>? {
+        val packet = r.frame.payload as? Ipv4Packet ?: return null
+        val udp = packet.payload as? UdpDatagram
+        return mapOf(
+            "id" to r.transitId,
+            "sentAtMs" to r.sentAtMs,
+            "from" to r.from.value,
+            "to" to r.to.value,
+            "outcome" to r.outcome.name,
+            "dropReason" to r.dropReason?.name,
+        ) + r.frame.decodeEnvelope() + (udp?.let { describePayload(it.payload) } ?: emptyMap())
     }
 
     override fun endpointStateChanged() {
@@ -89,7 +149,13 @@ class Cable(
             "propagationDelayMs" to profile.propagationDelay.inWholeMilliseconds,
             "connected" to isConnected,
             "linkUp" to isLinkUp,
+            "frames" to history.map { frameView(it) },
+            "packets" to history.mapNotNull { packetView(it) },
         ),
         relations = mapOf("endpoints" to (endpoints?.let { listOf(it.first.id, it.second.id) } ?: emptyList())),
     )
+
+    companion object {
+        const val DEFAULT_HISTORY_CAPACITY = 200
+    }
 }
