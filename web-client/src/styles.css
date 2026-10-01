@@ -67,10 +67,11 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
 .network-node .node-dhcp { display: block; color: #718ba2; font-weight: 400; letter-spacing: normal; }
-.network-node .node-dhcp-leases { margin-top: 8px; width: 286px; table-layout: fixed; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
-.network-node .node-dhcp-leases .lease-address { width: 78px; }
-.network-node .node-dhcp-leases .lease-mac { width: 112px; }
-.network-node .node-dhcp-leases .lease-remaining { width: 96px; }
+.network-node .node-dhcp-leases { margin-top: 8px; width: calc(42ch + 24px); table-layout: fixed; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
+/* Known protocol shapes plus the cells' 4px padding on each side. */
+.network-node .node-dhcp-leases .lease-address { width: calc(15ch + 8px); }
+.network-node .node-dhcp-leases .lease-mac { width: calc(17ch + 8px); }
+.network-node .node-dhcp-leases .lease-remaining { width: calc(10ch + 8px); }
 .network-node .node-dhcp-leases th,
 .network-node .node-dhcp-leases td { padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .network-node .node-dhcp-leases th { color: #8da5ba; font-weight: 700; border-bottom: 1px solid #29445f; }
