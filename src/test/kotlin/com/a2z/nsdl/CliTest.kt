@@ -58,4 +58,40 @@ class CliTest {
         assertTrue(stdout.toString().contains("\"address\":\"10.0.0.100\""), stdout.toString())
         assertTrue(stdout.toString().contains("\"id\":\"switch1\""), stdout.toString())
     }
+
+    @Test
+    fun `scenario list prints the names of the built-in teaching scenarios`() {
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+
+        val exit = Cli.run(arrayOf("scenario", "list"), PrintStream(stdout), PrintStream(stderr))
+
+        assertEquals(0, exit)
+        assertEquals("", stderr.toString())
+        assertTrue(stdout.toString().lines().contains("print-job"), stdout.toString())
+    }
+
+    @Test
+    fun `scenario run prints a PASSED report and exits 0 for a passing scenario`() {
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+
+        val exit = Cli.run(arrayOf("scenario", "run", "print-job", "--seed", "7"), PrintStream(stdout), PrintStream(stderr))
+
+        assertEquals(0, exit)
+        assertEquals("", stderr.toString())
+        assertTrue(stdout.toString().contains("scenario: print-job"), stdout.toString())
+        assertTrue(stdout.toString().contains("status: PASSED"), stdout.toString())
+    }
+
+    @Test
+    fun `scenario run reports an unknown scenario name as a usage error`() {
+        val stdout = ByteArrayOutputStream()
+        val stderr = ByteArrayOutputStream()
+
+        val exit = Cli.run(arrayOf("scenario", "run", "bogus"), PrintStream(stdout), PrintStream(stderr))
+
+        assertEquals(2, exit)
+        assertTrue(stderr.toString().contains("unknown scenario"), stderr.toString())
+    }
 }

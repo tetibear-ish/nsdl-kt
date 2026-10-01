@@ -46,7 +46,7 @@ class ObjectTypesCreateTest {
     }
 
     @Test
-    fun `creating a computer builds a device with DHCP and print client services`() {
+    fun `creating a computer builds a device with DHCP, print client and SSH client services`() {
         val validated = validateProperties(ComputerType.schema.properties, emptyMap())
 
         val obj = ComputerType.create(ObjectId("computer1"), validated.properties, ctx)
@@ -54,7 +54,20 @@ class ObjectTypesCreateTest {
         assertEquals(ObjectId("computer1"), obj.root.id)
         assertEquals(PowerState.OFF, obj.power?.powerState)
         assertEquals(1, obj.endpoints.size)
-        assertEquals(listOf("ethernet", "dhcp-client", "print-client"), obj.components.map { it.snapshot().type })
+        assertEquals(listOf("ethernet", "dhcp-client", "print-client", "ssh-client"), obj.components.map { it.snapshot().type })
+    }
+
+    @Test
+    fun `creating a linux-host builds a device with DHCP and SSH server services`() {
+        val validated = validateProperties(LinuxHostType.schema.properties, emptyMap())
+        assertTrue(validated.isValid, "errors: ${validated.errors}")
+
+        val obj = LinuxHostType.create(ObjectId("server1"), validated.properties, ctx)
+
+        assertEquals(ObjectId("server1"), obj.root.id)
+        assertEquals(PowerState.OFF, obj.power?.powerState)
+        assertEquals(1, obj.endpoints.size)
+        assertEquals(listOf("ethernet", "dhcp-client", "ssh-server"), obj.components.map { it.snapshot().type })
     }
 
     @Test

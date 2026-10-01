@@ -2,6 +2,10 @@ package com.a2z.nsdl
 
 import com.a2z.nsdl.ipc.IpcClient
 import com.a2z.nsdl.ipc.IpcServer
+import com.a2z.nsdl.scenario.ScenarioResult
+import com.a2z.nsdl.scenario.ScenarioRunner
+import com.a2z.nsdl.scenario.render
+import com.a2z.nsdl.scenario.teaching.ScenarioCatalog
 import com.a2z.nsdl.web.HttpSimulationServer
 import java.io.InputStream
 import java.io.PrintStream
@@ -15,6 +19,7 @@ object Cli {
             "demo" -> demo(args.drop(1), out)
             "shell" -> shell(args.drop(1), input, out)
             "web" -> web(args.drop(1), out)
+            "scenario" -> scenario(args.drop(1), out)
             else -> usage(err)
         }
     } catch (e: IllegalArgumentException) {
@@ -128,6 +133,37 @@ object Cli {
         return 0
     }
 
+    private fun scenario(args: List<String>, out: PrintStream): Int {
+        val sub = args.firstOrNull() ?: throw IllegalArgumentException("scenario requires a subcommand: list | run <name> [--seed N]")
+        return when (sub) {
+            "list" -> {
+                ScenarioCatalog.all.keys.sorted().forEach { out.println(it) }
+                0
+            }
+            "run" -> scenarioRun(args.drop(1), out)
+            else -> throw IllegalArgumentException("unknown scenario subcommand '$sub'")
+        }
+    }
+
+    private fun scenarioRun(args: List<String>, out: PrintStream): Int {
+        val name = args.firstOrNull() ?: throw IllegalArgumentException("scenario run requires a scenario name")
+        val factory = ScenarioCatalog.all[name] ?: throw IllegalArgumentException("unknown scenario '$name'")
+        val options = options(args.drop(1), setOf("--seed"))
+        val seed = options["--seed"]?.toLongOrNull() ?: 0L
+
+        val composition = Composition(seed)
+        return try {
+            val result = ScenarioRunner(composition.runtime).run(factory())
+            out.print(result.render())
+            when (result) {
+                is ScenarioResult.Completed -> if (result.passed) 0 else 1
+                is ScenarioResult.Errored, is ScenarioResult.Malformed -> 1
+            }
+        } finally {
+            composition.close()
+        }
+    }
+
     private fun runExample(client: IpcClient, out: PrintStream) {
         fun request(op: String, params: Map<String, Any?> = emptyMap()): Map<String, Any?> {
             val reply = client.request(op, params)
@@ -169,7 +205,10 @@ object Cli {
     }
 
     private fun usage(err: PrintStream): Int {
-        err.println("usage: nsdl serve [--port N] [--seed N] | web [--port N] [--seed N] | example --port N | demo | shell [--port N] [--seed N]")
+        err.println(
+            "usage: nsdl serve [--port N] [--seed N] | web [--port N] [--seed N] | example --port N | demo | " +
+                "shell [--port N] [--seed N] | scenario list | scenario run <name> [--seed N]",
+        )
         return 2
     }
 }

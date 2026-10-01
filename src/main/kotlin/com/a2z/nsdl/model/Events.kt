@@ -21,6 +21,7 @@ import com.a2z.nsdl.net.Ipv4Packet
  * - [ProtocolStateChanged] (source = protocol component): e.g. DHCP client SELECTING -> REQUESTING.
  * - [NetworkConfigChanged] (source = interface): IP configuration applied or cleared.
  * - [ConfigurationChanged]: persistent configuration updated by a command.
+ * - [ActionPerformed]: a [com.a2z.nsdl.app.Command.Invoke] was dispatched to an Actionable component.
  */
 sealed interface EventPayload {
     val name: String get() = this::class.simpleName!!
@@ -41,12 +42,13 @@ sealed interface EventPayload {
     data class NetworkConfigChanged(val config: Ipv4Config?) : EventPayload
     data class ConfigurationChanged(val properties: Map<String, Any?>) : EventPayload
     data class DecisionRecorded(val record: DecisionRecord) : EventPayload
+    data class ActionPerformed(val action: String, val accepted: Boolean, val detail: String) : EventPayload
 
     companion object {
         val NAMES: Set<String> = setOf(
             "ObjectCreated", "ObjectDeleted", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
             "LinkStateChanged", "FrameSent", "FrameReceived", "FrameDropped", "PacketAccepted",
-            "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged", "DecisionRecorded",
+            "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged", "DecisionRecorded", "ActionPerformed",
         )
     }
 }

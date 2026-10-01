@@ -13,29 +13,29 @@ import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.net.MacAddress
-import com.a2z.nsdl.print.PrintClient
-import com.a2z.nsdl.ssh.SshClient
+import com.a2z.nsdl.ssh.SshServer
 import kotlin.time.Duration.Companion.milliseconds
 
-/** A general endpoint host with DHCP and the client side of the teaching print and SSH protocols. */
-object ComputerType : ObjectType {
+/** A single-interface host with DHCP and the server side of the teaching SSH protocol. */
+object LinuxHostType : ObjectType {
     override val schema = ObjectTypeSchema(
-        name = "computer",
+        name = "linux-host",
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
             PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("username", PropertyType.STRING, required = false, default = "student", mutable = true, description = "SSH account username"),
+            PropertySpec("password", PropertyType.STRING, required = false, default = "hunter2", mutable = true, description = "SSH account password"),
         ),
         interfaces = listOf(InterfaceSpec("eth0", MediaType.TWISTED_PAIR)),
     )
 
     override fun create(id: ObjectId, props: Map<String, Any?>, ctx: CreationContext): SimObject {
         val builder = HostBuilder(id, schema.name, ctx.scheduler, ctx.events)
-        val eth0 = builder.ethernet("eth0", props["mac"] as? MacAddress ?: ctx.nextMac())
-        val dhcpId = id.child("dhcp-client")
-        builder.service(DhcpClient(dhcpId, eth0, eth0, ctx.random(dhcpId), ctx.events))
-        builder.service(PrintClient(id.child("print-client"), eth0))
-        builder.service(SshClient(id.child("ssh-client"), eth0))
+        val mac = props["mac"] as? MacAddress ?: ctx.nextMac()
+        val eth0 = builder.ethernet("eth0", mac)
+        builder.service(DhcpClient(id.child("dhcp-client"), eth0, eth0, ctx.random(id.child("dhcp-client")), ctx.events))
+        builder.service(SshServer(id.child("ssh-server"), eth0, username = props["username"] as String, password = props["password"] as String))
 
         val bootMs = props["bootMs"] as Long
         val device = builder.build { bootMs.milliseconds }
