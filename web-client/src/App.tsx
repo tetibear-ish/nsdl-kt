@@ -20,6 +20,8 @@ import { CableHistoryPanel } from "./CableHistoryPanel";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
 import { useClockTimeStore } from "./clockStore";
 import { moveCable, type CableEndpoints } from "./cableMove";
+import { describeConnectionRejection, guidePortStates, type GuidePort } from "./connectionGuide";
+import { useConnectionDragStore } from "./connectionDragStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { ConfigureObjectForm } from "./ConfigureObjectForm";
@@ -52,17 +54,31 @@ const defaultTransport = selectTransport();
 export function App({ transport = defaultTransport }: { transport?: SimulationTransport }) {
   const [nodes, setNodes, onNodesChange] = useNodesState<NetworkNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
+  // Read by deleteCableAtPort instead of a reactive `edges` dependency -- otherwise its identity
+  // (and refresh's, which depends on it) would change on every topology refresh, re-triggering
+  // the subscribe effect below on every update instead of once.
+  const edgesRef = useRef<Edge[]>(edges);
+  edgesRef.current = edges;
   const [types, setTypes] = useState<ObjectTypeSchema[]>([]);
   const [quickAdd, setQuickAdd] = useState<{ x: number; y: number } | null>(null);
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
   const [inspected, setInspected] = useState<ObjectSnapshot[]>([]);
   const [graphAnalysis, setGraphAnalysis] = useState<GraphAnalysis | null>(null);
+  const [connectionRejection, setConnectionRejection] = useState<{ message: string; x: number; y: number } | null>(null);
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
   const pinnedInspection = useRef<{ kind: "node" | "edge"; id: string } | null>(null);
   const reconnectingPort = useRef<string | null>(null);
+  // Set synchronously once listTypes resolves, read by refresh() so port media is correct even
+  // on the very first projection (avoiding a stale-closure race with the `types` state setter).
+  const typesRef = useRef<ObjectTypeSchema[]>([]);
+  // Lets deleteCableAtPort's undo call the current refresh() despite being declared above it.
+  const refreshRef = useRef<() => Promise<number>>(async () => 0);
+  // Screen position of the most recent connect attempt, for placing the rejection banner.
+  const lastConnectPoint = useRef({ x: 120, y: 120 });
+  const rejectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
   const records = useEditorStore((state) => state.records);
@@ -89,14 +105,30 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   }, [transport]);
 
   const deleteCableAtPort = useCallback(async (cableId: string) => {
+    const edge = edgesRef.current.find((candidate) => candidate.id === cableId);
+    const record = useEditorStore.getState().records[cableId];
     const result = await transport.execute<{ deleted: string[] }>("delete", { id: cableId });
     if (result.ok) {
       removeRecord(cableId);
+      if (record && edge?.sourceHandle && edge.targetHandle) {
+        const { sourceHandle, targetHandle } = edge;
+        undoStack.current.push({
+          description: `delete ${cableId}`,
+          undo: async () => {
+            await transport.execute("applyTopology", {
+              objects: [{ id: cableId, type: record.type, props: record.props }],
+              connections: [{ cableId, a: sourceHandle, b: targetHandle }],
+            });
+            setRecord(cableId, record);
+            await refreshRef.current();
+          },
+        });
+      }
       setLog((entries) => [...entries.slice(-99), `deleted ${cableId}`]);
     } else {
       setStatus(`${result.error.code}: ${result.error.message}`);
     }
-  }, [removeRecord, transport]);
+  }, [removeRecord, setRecord, transport]);
 
   const loadNodeInspection = useCallback(async (snapshot: ObjectSnapshot) => {
     const results = await Promise.all(inspectionIds(snapshot).map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
@@ -152,6 +184,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       dhcpServers,
       (cableId) => { void deleteCableAtPort(cableId); },
       reconnectingPort.current,
+      typesRef.current,
     );
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
@@ -174,13 +207,19 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setStatus(`revision ${result.revision}`);
     return result.revision;
   }, [deleteCableAtPort, fetchDeviceServices, loadGraphAnalysis, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     let unsubscribe = () => {};
     let disposed = false;
-    Promise.all([transport.listTypes(), refresh()]).then(([typeResult, revision]) => {
+    // listTypes is resolved before the first refresh() (rather than in parallel) so the very
+    // first topology projection already has schemas to resolve each port's media from.
+    transport.listTypes().then((typeResult) => {
       if (disposed) return;
-      if (typeResult.ok) setTypes(typeResult.data);
+      if (typeResult.ok) { setTypes(typeResult.data); typesRef.current = typeResult.data; }
+      return refresh();
+    }).then((revision) => {
+      if (disposed || revision === undefined) return;
       unsubscribe = transport.subscribe(revision, (event) => {
         const pulse = eventToPulse(event);
         if (pulse) {
@@ -220,6 +259,41 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
 
   const step = useCallback(() => { void transport.step(STEP_DURATION_MS); }, [transport]);
 
+  const guidePorts = useMemo<GuidePort[]>(
+    () => nodes.flatMap((node) => node.data.ports.map((port) => ({ id: port.id, media: port.media, occupied: port.occupied }))),
+    [nodes],
+  );
+
+  const onConnectStart = useCallback((_event: unknown, params: { handleId: string | null }) => {
+    setConnectionRejection(null);
+    if (!params.handleId) return;
+    useConnectionDragStore.getState().begin(guidePortStates(params.handleId, guidePorts));
+  }, [guidePorts]);
+
+  const onConnectEnd = useCallback((event: MouseEvent | TouchEvent) => {
+    useConnectionDragStore.getState().end();
+    const point = "changedTouches" in event ? event.changedTouches[0] : event;
+    if (point) lastConnectPoint.current = { x: point.clientX, y: point.clientY };
+  }, []);
+
+  const isValidConnection = useCallback((connection: Connection | Edge) => {
+    const { sourceHandle, targetHandle } = connection;
+    if (!sourceHandle || !targetHandle) return false;
+    if (sourceHandle === targetHandle) return false;
+    const source = guidePorts.find((port) => port.id === sourceHandle);
+    const target = guidePorts.find((port) => port.id === targetHandle);
+    // Media mismatch is the one thing nothing else client-side already guards against --
+    // an occupied target is already excluded via that Handle's isConnectable.
+    if (!source || !target) return true;
+    return source.media === target.media;
+  }, [guidePorts]);
+
+  const showConnectionRejection = useCallback((message: string) => {
+    if (rejectionTimer.current) clearTimeout(rejectionTimer.current);
+    setConnectionRejection({ message, ...lastConnectPoint.current });
+    rejectionTimer.current = setTimeout(() => setConnectionRejection(null), 5000);
+  }, []);
+
   const onConnect = useCallback(async (connection: Connection) => {
     if (!connection.sourceHandle || !connection.targetHandle) return;
     const cableId = `cable-${crypto.randomUUID().slice(0, 8)}`;
@@ -227,7 +301,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       objects: [{ id: cableId, type: "cat5-cable", props: {} }],
       connections: [{ cableId, a: connection.sourceHandle, b: connection.targetHandle }],
     });
-    if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
+    if (!result.ok) {
+      setStatus(`${result.error.code}: ${result.error.message}`);
+      showConnectionRejection(describeConnectionRejection(result.error));
+    }
     if (result.ok) {
       setRecord(cableId, { type: "cat5-cable", props: {} });
       undoStack.current.push({
@@ -243,7 +320,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       ? `connected ${connection.sourceHandle} ↔ ${connection.targetHandle}`
       : `connect failed: ${result.error.message}`]);
     await refresh();
-  }, [refresh, removeRecord, setRecord, transport]);
+  }, [refresh, removeRecord, setRecord, showConnectionRejection, transport]);
 
   const disconnecting = useRef(new Set<string>());
   const disconnect = useCallback(async (edge: Edge) => {
@@ -479,7 +556,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           fitView
           nodes={nodes}
           nodeTypes={nodeTypes}
+          isValidConnection={isValidConnection}
           onConnect={onConnect}
+          onConnectStart={onConnectStart}
+          onConnectEnd={onConnectEnd}
           onEdgesChange={onEdgesChange}
           onEdgeClick={(_event, edge) => { pinnedInspection.current = { kind: "edge", id: edge.id }; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
@@ -522,7 +602,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
             placement.current = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? { x: 120, y: 120 };
             setQuickAdd({ x: event.clientX, y: event.clientY });
           }}
-          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); setQuickAdd(null); }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); setQuickAdd(null); setConnectionRejection(null); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />
@@ -571,6 +651,13 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <button onClick={() => { void quickCreate("gateway"); }}>+ Gateway</button>
         <button onClick={() => { void quickCreate("ethernet-switch"); }}>+ Switch</button>
       </nav>}
+      {connectionRejection && (
+        <div
+          className="connection-rejection"
+          role="alert"
+          style={{ left: connectionRejection.x, top: connectionRejection.y }}
+        >{connectionRejection.message}</div>
+      )}
       <div className="bottom-panels">
         <section className="activity-log" aria-label="Activity log">
           <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
