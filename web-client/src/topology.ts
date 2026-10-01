@@ -1,5 +1,6 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
 import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
+import type { SoftwarePrinter } from "./softwareLayer";
 
 /** Media reported for a port whose owning device's type schema isn't known yet (e.g. before
  *  listTypes has resolved), or whose schema has no matching interface. Never a real MediaType. */
@@ -28,6 +29,12 @@ export type NetworkNodeData = Record<string, unknown> & {
   dhcpLease?: ObjectSnapshot;
   dhcpServer?: ObjectSnapshot;
   inspection?: InspectionMode;
+  softwarePrinters?: SoftwarePrinter[];
+  printerCandidates?: SoftwarePrinter[];
+  onAddPrinter?: (printer: SoftwarePrinter) => void;
+  onRenamePrinter?: (printer: SoftwarePrinter) => void;
+  onDeletePrinter?: (printer: SoftwarePrinter) => void;
+  onTestPage?: (printer: SoftwarePrinter) => void;
 };
 
 export type NetworkNode = Node<NetworkNodeData, "network">;
@@ -35,6 +42,14 @@ export type NetworkNode = Node<NetworkNodeData, "network">;
 export type TopologyProjection = {
   nodes: NetworkNode[];
   edges: Edge[];
+};
+
+export type SoftwareProjection = {
+  inventories?: Record<string, SoftwarePrinter[]>;
+  onAddPrinter?: (workstationId: string, printer: SoftwarePrinter) => void;
+  onRenamePrinter?: (workstationId: string, printer: SoftwarePrinter) => void;
+  onDeletePrinter?: (workstationId: string, printer: SoftwarePrinter) => void;
+  onTestPage?: (workstationId: string, printer: SoftwarePrinter) => void;
 };
 
 const endpointOwner = (endpoint: string) => endpoint.includes(".")
@@ -51,11 +66,19 @@ export function projectTopology(
   reconnectingPortId?: string | null,
   schemas: ObjectTypeSchema[] = [],
   inspection?: { kind: "node" | "edge"; id: string; pinned: boolean } | null,
+  software: SoftwareProjection = {},
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
   const cableByEndpoint = new Map(cables.flatMap((cable) => (cable.relations.endpoints ?? []).map((endpoint) => [endpoint, cable.id] as const)));
   const devices = snapshots.filter((snapshot) => snapshot.kind === "DEVICE");
+  const interfaceMacs = new Map(snapshots.filter((snapshot) => snapshot.kind === "INTERFACE").map((snapshot) => [snapshot.id, String(snapshot.state.mac ?? "")]));
+  const printerCandidates = devices.filter((snapshot) => snapshot.type === "printer").flatMap((printer) => {
+    const address = typeof dhcpLeases[printer.id]?.state.offeredAddress === "string" ? dhcpLeases[printer.id].state.offeredAddress as string : null;
+    const interfaceId = printer.relations.interfaces?.[0];
+    const mac = interfaceId ? interfaceMacs.get(interfaceId) : "";
+    return address && mac ? [{ id: printer.id, name: printer.id, address, mac }] : [];
+  });
   const schemaByType = new Map(schemas.map((schema) => [schema.name, schema]));
   const mediaOf = (deviceType: string, portName: string) =>
     schemaByType.get(deviceType)?.interfaces.find((iface) => iface.name === portName)?.media ?? UNKNOWN_MEDIA;
@@ -76,6 +99,12 @@ export function projectTopology(
       inspection: inspection?.kind === "node" && inspection.id === snapshot.id
         ? (inspection.pinned ? "pinned" : "hover")
         : undefined,
+      softwarePrinters: software.inventories?.[snapshot.id] ?? [],
+      printerCandidates,
+      onAddPrinter: (printer) => software.onAddPrinter?.(snapshot.id, printer),
+      onRenamePrinter: (printer) => software.onRenamePrinter?.(snapshot.id, printer),
+      onDeletePrinter: (printer) => software.onDeletePrinter?.(snapshot.id, printer),
+      onTestPage: (printer) => software.onTestPage?.(snapshot.id, printer),
       onCableDelete,
       ports: (snapshot.relations.interfaces ?? []).map((id) => {
         const name = id.slice(snapshot.id.length + 1);

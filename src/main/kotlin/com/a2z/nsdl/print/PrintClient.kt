@@ -73,8 +73,16 @@ class PrintClient(override val id: ObjectId, private val transport: UdpTransport
         val jobId = params["jobId"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'jobId'")
         val documentName = params["documentName"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'documentName'")
         val bytes = (params["bytes"] as? Number)?.toInt() ?: return ActionOutcome(accepted = false, detail = "missing 'bytes'")
-        val printerAddress = params["printerAddress"] as? Ipv4Address ?: return ActionOutcome(accepted = false, detail = "missing 'printerAddress'")
-        val printerMac = params["printerMac"] as? MacAddress ?: return ActionOutcome(accepted = false, detail = "missing 'printerMac'")
+        val printerAddress = when (val value = params["printerAddress"]) {
+            is Ipv4Address -> value
+            is String -> runCatching { Ipv4Address.parse(value) }.getOrNull()
+            else -> null
+        } ?: return ActionOutcome(accepted = false, detail = "missing or invalid 'printerAddress'")
+        val printerMac = when (val value = params["printerMac"]) {
+            is MacAddress -> value
+            is String -> runCatching { MacAddress.parse(value) }.getOrNull()
+            else -> null
+        } ?: return ActionOutcome(accepted = false, detail = "missing or invalid 'printerMac'")
         val chunkSize = (params["chunkSize"] as? Number)?.toInt() ?: 1_000
 
         val accepted = try {

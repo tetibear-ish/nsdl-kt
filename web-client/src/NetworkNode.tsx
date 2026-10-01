@@ -7,6 +7,7 @@ import { useConnectionDragStore } from "./connectionDragStore";
 import { parseDhcpLease } from "./dhcpLease";
 import { parseDhcpServerLeases } from "./dhcpServerLeases";
 import { LookingGlass } from "./LookingGlass";
+import { SoftwareDesktop } from "./SoftwareDesktop";
 import type { NetworkNode as NetworkNodeType } from "./topology";
 
 export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
@@ -28,6 +29,17 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
         <span className={`node-inspection-glass ${data.inspection}`}>
           <LookingGlass />
         </span>
+      )}
+      {(data.snapshot.type === "computer" || data.snapshot.type === "workstation") && (
+        <SoftwareDesktop
+          address={lease?.address}
+          printers={data.softwarePrinters ?? []}
+          candidates={data.printerCandidates ?? []}
+          onAddPrinter={(printer) => data.onAddPrinter?.(printer)}
+          onRenamePrinter={(printer) => data.onRenamePrinter?.(printer)}
+          onDeletePrinter={(printer) => data.onDeletePrinter?.(printer)}
+          onTestPage={(printer) => data.onTestPage?.(printer)}
+        />
       )}
       {lease?.address && (
         <small className="node-dhcp">

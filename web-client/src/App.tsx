@@ -24,10 +24,13 @@ import { describeConnectionRejection, guidePortStates, type GuidePort } from "./
 import { useConnectionDragStore } from "./connectionDragStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
+import { parseDhcpLease } from "./dhcpLease";
 import { ConfigureObjectForm } from "./ConfigureObjectForm";
 import { HistoryDropdown } from "./HistoryDropdown";
 import { InspectableEdge } from "./InspectableEdge";
 import { NetworkNode } from "./NetworkNode";
+import { SoftwareInspector } from "./SoftwareInspector";
+import { addSoftwarePrinter, removeSoftwarePrinter, renameSoftwarePrinter, type SoftwarePrinter } from "./softwareLayer";
 import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
 import { eventToPacket } from "./packetInspector";
@@ -102,6 +105,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [positions, setPositions] = useState<Record<string, Position>>({});
   const positionsRef = useRef<Record<string, Position>>({});
   const [presence, setPresence] = useState<string[]>([]);
+  const [softwarePrinters, setSoftwarePrinters] = useState<Record<string, SoftwarePrinter[]>>({});
+  const softwarePrintersRef = useRef(softwarePrinters);
+  softwarePrintersRef.current = softwarePrinters;
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -193,6 +199,52 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     );
   }, [transport]);
 
+  const addPrinterToWorkstation = useCallback((workstationId: string, printer: SoftwarePrinter) => {
+    setSoftwarePrinters((current) => {
+      const next = { ...current, [workstationId]: addSoftwarePrinter(current[workstationId] ?? [], printer) };
+      softwarePrintersRef.current = next;
+      return next;
+    });
+    setLog((entries) => [...entries.slice(-99), `${workstationId}: added ${printer.name} to software printer inventory`]);
+  }, []);
+
+  const renamePrinterOnWorkstation = useCallback((workstationId: string, printer: SoftwarePrinter) => {
+    const name = window.prompt("Printer name", printer.name);
+    if (!name) return;
+    setSoftwarePrinters((current) => {
+      const next = { ...current, [workstationId]: renameSoftwarePrinter(current[workstationId] ?? [], printer.id, name) };
+      softwarePrintersRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const deletePrinterFromWorkstation = useCallback((workstationId: string, printer: SoftwarePrinter) => {
+    setSoftwarePrinters((current) => {
+      const next = { ...current, [workstationId]: removeSoftwarePrinter(current[workstationId] ?? [], printer.id) };
+      softwarePrintersRef.current = next;
+      return next;
+    });
+  }, []);
+
+  const sendTestPage = useCallback(async (workstationId: string, printer: SoftwarePrinter) => {
+    const result = await transport.execute("invoke", {
+      id: `${workstationId}.print-client`,
+      action: "submit",
+      params: {
+        jobId: `test-page-${Date.now()}`,
+        documentName: "NSDL test page",
+        bytes: 1_024,
+        printerAddress: printer.address,
+        printerMac: printer.mac,
+        chunkSize: 512,
+      },
+    });
+    setLog((entries) => [...entries.slice(-99), result.ok
+      ? `${workstationId}: sent test page to ${printer.name}`
+      : `${workstationId}: test page failed: ${result.error.message}`]);
+    await refreshRef.current();
+  }, [transport]);
+
   const refresh = useCallback(async () => {
     const result = await transport.listObjects();
     if (!result.ok) {
@@ -213,6 +265,13 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       reconnectingPort.current,
       typesRef.current,
       inspectionFocus.current,
+      {
+        inventories: softwarePrintersRef.current,
+        onAddPrinter: addPrinterToWorkstation,
+        onRenamePrinter: renamePrinterOnWorkstation,
+        onDeletePrinter: deletePrinterFromWorkstation,
+        onTestPage: sendTestPage,
+      },
     );
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
@@ -539,6 +598,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
   const inspectedDevice = inspected[0]?.kind === "DEVICE" ? inspected[0] : null;
   const inspectedSchema = inspectedDevice ? types.find((type) => type.name === inspectedDevice.type) : undefined;
+  const inspectedSoftwareLease = inspectedDevice && (inspectedDevice.type === "computer" || inspectedDevice.type === "workstation")
+    ? inspected.find((snapshot) => snapshot.type === "dhcp-client")
+    : undefined;
 
   return (
     <main className="app-shell">
@@ -676,6 +738,12 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       </section>
       <aside className="inspector" aria-label="Element state">
         <h2>Element state</h2>
+        {inspectedDevice && (inspectedDevice.type === "computer" || inspectedDevice.type === "workstation") && (
+          <SoftwareInspector
+            address={inspectedSoftwareLease ? parseDhcpLease(inspectedSoftwareLease, clock.nowMs).address : null}
+            printers={softwarePrinters[inspectedDevice.id] ?? []}
+          />
+        )}
         {inspected.length === 0
           ? <p>Hover over a device or cable.</p>
           : inspected.map((snapshot) => (

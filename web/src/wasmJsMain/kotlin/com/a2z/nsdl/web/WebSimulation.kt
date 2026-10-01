@@ -74,6 +74,7 @@ class WebSimulation(seed: Long = 0L) {
         "listTypes" -> Command.ListTypes
         "listObjects" -> Command.ListObjects
         "inspect" -> Command.Inspect(stringParam(params, "id"))
+        "invoke" -> Command.Invoke(stringParam(params, "id"), stringParam(params, "action"), propsParam(params["params"]))
         "analyzeGraph" -> Command.AnalyzeGraph(stringParam(params, "id"))
         "create" -> Command.Create(stringParam(params, "id"), stringParam(params, "type"), propsParam(params))
         "applyTopology" -> {
@@ -107,6 +108,9 @@ class WebSimulation(seed: Long = 0L) {
     @Suppress("UNCHECKED_CAST")
     private fun propsParam(params: Map<String, Any?>): Map<String, Any?> =
         params["props"] as? Map<String, Any?> ?: emptyMap()
+
+    @Suppress("UNCHECKED_CAST")
+    private fun propsParam(value: Any?): Map<String, Any?> = value as? Map<String, Any?> ?: emptyMap()
 
     private fun newService(seed: Long): SimulationService {
         val registry = TypeRegistry().apply {

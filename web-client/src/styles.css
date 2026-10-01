@@ -35,6 +35,36 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .inspector { min-width: 0; overflow: auto; border-left: 1px solid #29445f; padding: 16px; background: rgba(7, 19, 31, .92); }
 .inspector h2 { margin: 0 0 12px; color: #8da5ba; font-size: 12px; text-transform: uppercase; letter-spacing: .12em; }
 .inspector h3 { margin: 12px 0 4px; color: #5de4d1; font: 700 12px ui-monospace, monospace; }
+.software-desktop { grid-column: 1 / -1; width: 310px; margin: 10px -10px 4px; border: 1px solid #b5c5d4; border-radius: 9px; overflow: hidden; color: #1e3040; background: #edf3f8; box-shadow: 0 4px 12px rgba(0,0,0,.22); text-align: left; }
+.software-desktop header { display: flex; justify-content: space-between; padding: 7px 9px; color: #29445f; background: #d7e3ed; font-size: 10px; }
+.software-desktop header span { color: #45657e; font: 10px ui-monospace, monospace; }
+.software-desktop-body { position: relative; min-height: 92px; padding: 10px; background: linear-gradient(135deg, #f8fbfd, #dce8f1); }
+.desktop-app { display: grid; gap: 3px; width: 55px; padding: 3px; border: 0; color: #29445f; background: transparent; font-size: 10px; font-weight: 600; text-align: center; }
+.desktop-app:hover { background: rgba(122, 160, 190, .22); }
+.desktop-app-icon { display: block; margin: auto; color: #35749a; font-size: 27px; line-height: 27px; }
+.print-menu { position: absolute; z-index: 2; top: 8px; left: 72px; width: 220px; padding: 8px; border: 1px solid #9eb4c6; border-radius: 6px; color: #20394d; background: #fff; box-shadow: 0 8px 20px rgba(34, 61, 80, .25); font-size: 10px; }
+.print-menu > strong { display: block; margin-bottom: 5px; }
+.print-menu p { margin: 4px 0; color: #60778d; font-size: 10px; }
+.desktop-printer { display: grid; gap: 5px; padding: 5px 0; border-top: 1px solid #dbe5ed; }
+.desktop-printer b, .desktop-printer small { display: block; }
+.desktop-printer small { color: #60778d; font: 10px ui-monospace, monospace; }
+.desktop-printer-actions { display: flex; gap: 3px; }
+.desktop-printer-actions button, .print-menu .add-printer { padding: 3px 5px; border: 1px solid #9eb4c6; border-radius: 4px; color: #29445f; background: #edf3f8; font-size: 9px; font-weight: 600; }
+.print-menu .add-printer { width: 100%; margin-top: 6px; }
+.printer-candidates { margin-top: 6px; padding: 6px; border: 1px solid #c5d5e2; border-radius: 5px; background: #f7fbff; font-size: 10px; }
+.printer-candidate { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 5px; }
+.printer-candidate small { display: block; color: #60778d; font: 10px ui-monospace, monospace; }
+.printer-candidate button { padding: 2px 6px; border: 1px solid #9eb4c6; border-radius: 4px; color: #29445f; background: #edf3f8; font-size: 9px; font-weight: 600; }
+.print-menu button:hover { background: #d7e8f4; }
+.software-desktop footer { padding: 4px 9px; color: #60778d; background: #e4edf4; font-size: 9px; }
+.software-inspector { margin: -4px 0 15px; padding: 9px; border: 1px solid #b5c5d4; border-radius: 7px; color: #20394d; background: #edf3f8; }
+.software-inspector h3 { margin: 0 0 5px; color: #29445f; font: 700 12px ui-sans-serif, sans-serif; }
+.software-inspector p { margin: 4px 0 7px; color: #45657e; font-size: 11px; }
+.software-inspector code { font: 11px ui-monospace, monospace; }
+.software-inspector small { color: #60778d; font-size: 10px; }
+.software-printers { width: 100%; margin: 6px 0; border-collapse: collapse; font-size: 11px; }
+.software-printers th { color: #60778d; font-weight: 600; text-align: left; }
+.software-printers td { padding: 4px 3px; border-top: 1px solid #d1dee8; }
 .inspector p { color: #718ba2; font-size: 13px; }
 .inspector pre { margin: 0; overflow: auto; white-space: pre-wrap; color: #c2d4e4; font: 11px/1.5 ui-monospace, monospace; }
 .inspector button { width: 100%; margin-top: 14px; }

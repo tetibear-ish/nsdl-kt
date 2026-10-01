@@ -59,6 +59,7 @@ object RequestCodec {
         "listTypes" -> IpcOperation.Run(Command.ListTypes)
         "listObjects" -> IpcOperation.Run(Command.ListObjects)
         "inspect" -> IpcOperation.Run(Command.Inspect(stringParam(params, "id")))
+        "invoke" -> IpcOperation.Run(Command.Invoke(stringParam(params, "id"), stringParam(params, "action"), propsParam(params, "params")))
         "analyzeGraph" -> IpcOperation.Run(Command.AnalyzeGraph(stringParam(params, "id")))
         "create" -> IpcOperation.Run(Command.Create(stringParam(params, "id"), stringParam(params, "type"), propsParam(params, "props")))
         "applyTopology" -> IpcOperation.Run(Command.ApplyTopology(decodeTopologyBatch(params)))
