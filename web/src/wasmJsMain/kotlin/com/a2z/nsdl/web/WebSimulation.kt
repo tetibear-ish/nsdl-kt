@@ -7,6 +7,7 @@ import com.a2z.nsdl.app.ObjectTypeSchema
 import com.a2z.nsdl.app.SimulationService
 import com.a2z.nsdl.app.TypeRegistry
 import com.a2z.nsdl.app.types.Cat5CableType
+import com.a2z.nsdl.app.types.ComputerType
 import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
@@ -115,6 +116,7 @@ class WebSimulation(seed: Long = 0L) {
     private fun newService(seed: Long): SimulationService {
         val registry = TypeRegistry().apply {
             register(PrinterType)
+            register(ComputerType)
             register(DhcpServerHostType)
             register(EthernetSwitchType)
             register(Cat5CableType)
