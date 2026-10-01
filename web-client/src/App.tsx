@@ -13,7 +13,7 @@ import {
 } from "@xyflow/react";
 import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AddObjectDialog, defaultObjectId } from "./AddObjectDialog";
+import { defaultObjectId } from "./AddObjectDialog";
 import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
@@ -49,7 +49,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [nodes, setNodes, onNodesChange] = useNodesState<NetworkNodeType>([]);
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [types, setTypes] = useState<ObjectTypeSchema[]>([]);
-  const [addOpen, setAddOpen] = useState(false);
   const [quickAdd, setQuickAdd] = useState<{ x: number; y: number } | null>(null);
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
@@ -380,15 +379,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     void importDocumentFromFile(file).then((result) => applyLoadedDocument(result, `imported ${file.name}`));
   }, [applyLoadedDocument]);
 
-  const openAddAt = useCallback((clientX?: number, clientY?: number) => {
-    if (clientX != null && clientY != null && flow.current) {
-      placement.current = flow.current.screenToFlowPosition({ x: clientX, y: clientY });
-    } else {
-      placement.current = { x: 120, y: 120 };
-    }
-    setAddOpen(true);
-  }, []);
-
   const quickCreate = useCallback(async (typeName: string) => {
     const type = types.find((candidate) => candidate.name === typeName);
     if (!type) return;
@@ -404,7 +394,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   return (
     <main className="app-shell">
       <header className="toolbar">
-        <div><span>NSDL</span><strong>Topology Lab</strong></div>
+        <div><span>NSDL</span><strong>Topology Lab</strong><HistoryDropdown /></div>
         <div className="toolbar-actions">
           <output>{status}</output>
           <div className="clock-controls" aria-label="Simulation clock">
@@ -420,9 +410,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
               >{speed}×</button>
             ))}
           </div>
-          <button onClick={() => openAddAt()}>Add…</button>
           <button className="secondary" onClick={() => { void undo(); }}>Undo</button>
-          <HistoryDropdown />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="secondary icon-button" aria-label="Lab options">⋯</button>
@@ -555,13 +543,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
         <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>
       </section>
-      <AddObjectDialog
-        open={addOpen}
-        types={types}
-        existingIds={nodes.map((node) => node.id)}
-        onCreate={createObject}
-        onOpenChange={setAddOpen}
-      />
     </main>
   );
 }

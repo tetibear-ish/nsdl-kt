@@ -22,6 +22,8 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .dropdown-item { border-radius: 6px; padding: 9px 12px; color: #d9e6f2; font-size: 13px; cursor: pointer; outline: none; }
 .dropdown-item[data-highlighted] { background: #185052; color: #d4fff9; }
 .dropdown-separator { height: 1px; margin: 6px 4px; background: #29445f; }
+.history-trigger { border: 0; padding: 4px 2px; background: transparent; color: #60778d; font-size: 12px; font-weight: 500; }
+.history-trigger:hover { background: transparent; color: #a9bdd0; }
 .history-dropdown { width: min(520px, calc(100vw - 32px)); max-height: min(480px, calc(100vh - 90px)); overflow-y: auto; }
 .history-entry { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; cursor: default; }
 .history-entry code { color: #5de4d1; font-size: 11px; }
@@ -76,6 +78,7 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node .node-dhcp-leases td { padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .network-node .node-dhcp-leases th { color: #8da5ba; font-weight: 700; border-bottom: 1px solid #29445f; }
 .network-node .node-dhcp-leases td { border-top: 1px solid #1c3349; }
+.network-node .node-dhcp-leases tbody tr:only-child { height: 22px; }
 .network-node .node-dhcp-leases .lease-waiting { height: 22px; text-align: center; font-style: italic; }
 .network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
 .network-node.power-booting { border-color: #ffc96b; }

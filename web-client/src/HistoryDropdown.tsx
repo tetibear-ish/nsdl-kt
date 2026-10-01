@@ -6,10 +6,10 @@ export function HistoryDropdown({ commits = __GIT_HISTORY__ }: { commits?: GitCo
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
-        <button className="secondary" aria-label="History">History</button>
+        <button className="history-trigger" aria-label="History">History</button>
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
-        <DropdownMenu.Content className="dropdown-content history-dropdown" align="end" sideOffset={6}>
+        <DropdownMenu.Content className="dropdown-content history-dropdown" align="start" sideOffset={6}>
           {commits.length === 0 ? (
             <DropdownMenu.Item className="dropdown-item history-entry" disabled>
               Commit history unavailable
