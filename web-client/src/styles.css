@@ -131,4 +131,8 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .packet-table td { padding: 3px 8px 3px 0; color: #dce9f6; font: 11px ui-monospace, monospace; border-top: 1px solid #1c3349; white-space: nowrap; }
 .packet-table tr.packet-dropped td { color: #ff9297; }
 button.packet-endpoint { border: 0; padding: 0; background: transparent; color: #6bb8ff; font: inherit; font-weight: 400; text-decoration: underline; cursor: pointer; }
+.cable-history-tabs { display: flex; gap: 6px; margin-bottom: 8px; }
+.cable-history-tabs button { padding: 4px 10px; font-size: 11px; }
+.cable-history .packet-table { font-size: 11px; }
+.cable-history .packet-table th { position: static; background: transparent; }
 @media (max-width: 1000px) { .bottom-panels { flex-direction: column; } .bottom-panels .activity-log { flex: 0 0 96px; border-right: 0; border-bottom: 1px solid #29445f; } }
