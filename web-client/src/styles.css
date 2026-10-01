@@ -72,6 +72,15 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
 .network-node .node-dhcp { display: block; color: #718ba2; font-weight: 400; letter-spacing: normal; }
+.node-inspection-glass,
+.edge-inspection-glass { position: absolute; z-index: 3; width: 34px; height: 34px; pointer-events: none; }
+.node-inspection-glass { top: 50%; left: 50%; transform: translate(-50%, -50%); }
+.edge-inspection-glass { width: 30px; height: 30px; }
+.node-inspection-glass.hover,
+.edge-inspection-glass.hover { opacity: .3; }
+.node-inspection-glass.pinned,
+.edge-inspection-glass.pinned { opacity: 1; }
+.looking-glass { width: 100%; height: 100%; fill: rgba(7, 17, 31, .72); stroke: #dce9f6; stroke-width: 2.5; stroke-linecap: round; filter: drop-shadow(0 1px 2px #07111f); }
 .network-node .node-dhcp-leases { margin-top: 8px; width: calc(42ch + 24px); table-layout: fixed; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
 /* Known protocol shapes plus the cells' 4px padding on each side. */
 .network-node .node-dhcp-leases .lease-address { width: calc(15ch + 8px); }

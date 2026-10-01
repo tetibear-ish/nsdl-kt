@@ -6,6 +6,7 @@ import { useClockTimeStore } from "./clockStore";
 import { useConnectionDragStore } from "./connectionDragStore";
 import { parseDhcpLease } from "./dhcpLease";
 import { parseDhcpServerLeases } from "./dhcpServerLeases";
+import { LookingGlass } from "./LookingGlass";
 import type { NetworkNode as NetworkNodeType } from "./topology";
 
 export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
@@ -23,6 +24,11 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
       <strong>{data.snapshot.id}</strong>
       <span>{data.snapshot.type}</span>
       <small>{power}</small>
+      {data.inspection && (
+        <span className={`node-inspection-glass ${data.inspection}`}>
+          <LookingGlass />
+        </span>
+      )}
       {lease?.address && (
         <small className="node-dhcp">
           {lease.address}

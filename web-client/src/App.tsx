@@ -26,6 +26,7 @@ import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { ConfigureObjectForm } from "./ConfigureObjectForm";
 import { HistoryDropdown } from "./HistoryDropdown";
+import { InspectableEdge } from "./InspectableEdge";
 import { NetworkNode } from "./NetworkNode";
 import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
@@ -49,6 +50,7 @@ const UNDO_CAPACITY = 50;
 const STEP_DURATION_MS = 100;
 
 const nodeTypes = { network: NetworkNode };
+const edgeTypes = { inspectable: InspectableEdge };
 const defaultTransport = selectTransport();
 
 export function App({ transport = defaultTransport }: { transport?: SimulationTransport }) {
@@ -70,6 +72,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
   const pinnedInspection = useRef<{ kind: "node" | "edge"; id: string } | null>(null);
+  const inspectionFocus = useRef<{ kind: "node" | "edge"; id: string; pinned: boolean } | null>(null);
   const reconnectingPort = useRef<string | null>(null);
   // Set synchronously once listTypes resolves, read by refresh() so port media is correct even
   // on the very first projection (avoiding a stale-closure race with the `types` state setter).
@@ -136,7 +139,8 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
 
   const loadNodeInspection = useCallback(async (snapshot: ObjectSnapshot) => {
     const results = await Promise.all(inspectionIds(snapshot).map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
-    if (pinnedInspection.current?.kind === "node" && pinnedInspection.current.id !== snapshot.id) return;
+    const focus = inspectionFocus.current;
+    if (!focus || focus.kind !== "node" || focus.id !== snapshot.id) return;
     setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
   }, [transport]);
 
@@ -145,15 +149,34 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     if (result.ok) setGraphAnalysis(result.data);
   }, [transport]);
 
+  const setInspectionFocus = useCallback((focus: { kind: "node" | "edge"; id: string; pinned: boolean } | null) => {
+    inspectionFocus.current = focus;
+    setNodes((current) => current.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        inspection: focus?.kind === "node" && focus.id === node.id ? (focus.pinned ? "pinned" : "hover") : undefined,
+      },
+    })));
+    setEdges((current) => current.map((edge) => ({
+      ...edge,
+      data: {
+        ...(edge.data ?? {}),
+        inspection: focus?.kind === "edge" && focus.id === edge.id ? (focus.pinned ? "pinned" : "hover") : undefined,
+      },
+    })));
+  }, [setEdges, setNodes]);
+
   /** Jumps pinned inspection to a node by id -- how the packet-inspection pane and per-cable history
    * (S20) navigate from an observed packet's endpoint to the node whose decision explains it. */
   const navigateToNode = useCallback((nodeId: string) => {
     const node = flow.current?.getNode(nodeId);
     if (!node) return;
     pinnedInspection.current = { kind: "node", id: nodeId };
+    setInspectionFocus({ kind: "node", id: nodeId, pinned: true });
     void loadNodeInspection(node.data.snapshot);
     void loadGraphAnalysis(nodeId);
-  }, [loadGraphAnalysis, loadNodeInspection]);
+  }, [loadGraphAnalysis, loadNodeInspection, setInspectionFocus]);
 
   const fetchDeviceServices = useCallback(async (devices: ObjectSnapshot[], suffix: string) => {
     const services = devices.flatMap((snapshot) =>
@@ -189,6 +212,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       (cableId) => { void deleteCableAtPort(cableId); },
       reconnectingPort.current,
       typesRef.current,
+      inspectionFocus.current,
     );
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
@@ -442,6 +466,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     });
     removed.forEach((entry) => { removeRecord(entry.id); transport.removePosition(entry.id); });
     pinnedInspection.current = null;
+    setInspectionFocus(null);
     setInspected([]);
     setLog((entries) => [...entries.slice(-99), `deleted ${result.data.deleted.join(", ")}`]);
     await refresh();
@@ -575,14 +600,24 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           fitView
           nodes={nodes}
           nodeTypes={nodeTypes}
+          edgeTypes={edgeTypes}
           isValidConnection={isValidConnection}
           onConnect={onConnect}
           onConnectStart={onConnectStart}
           onConnectEnd={onConnectEnd}
           onEdgesChange={onEdgesChange}
-          onEdgeClick={(_event, edge) => { pinnedInspection.current = { kind: "edge", id: edge.id }; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
-          onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
-          onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
+          onEdgeClick={(_event, edge) => {
+            pinnedInspection.current = { kind: "edge", id: edge.id };
+            setInspectionFocus({ kind: "edge", id: edge.id, pinned: true });
+            setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []);
+          }}
+          onEdgeMouseEnter={(_event, edge) => {
+            if (!pinnedInspection.current) {
+              setInspectionFocus({ kind: "edge", id: edge.id, pinned: false });
+              setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []);
+            }
+          }}
+          onEdgeMouseLeave={() => { if (!pinnedInspection.current) { setInspectionFocus(null); setInspected([]); } }}
           onReconnect={(edge, connection) => { void reconnectCable(edge, connection); }}
           onReconnectStart={(_event, edge, handleType) => {
             reconnectCompleted.current = false;
@@ -605,9 +640,19 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
             if (!reconnectCompleted.current) void disconnect(edge);
           }}
           onInit={(instance) => { flow.current = instance; }}
-          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); void loadGraphAnalysis(node.id); }}
-          onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
-          onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
+          onNodeClick={(_event, node) => {
+            pinnedInspection.current = { kind: "node", id: node.id };
+            setInspectionFocus({ kind: "node", id: node.id, pinned: true });
+            void loadNodeInspection(node.data.snapshot);
+            void loadGraphAnalysis(node.id);
+          }}
+          onNodeMouseEnter={(_event, node) => {
+            if (!pinnedInspection.current) {
+              setInspectionFocus({ kind: "node", id: node.id, pinned: false });
+              void loadNodeInspection(node.data.snapshot);
+            }
+          }}
+          onNodeMouseLeave={() => { if (!pinnedInspection.current) { setInspectionFocus(null); setInspected([]); } }}
           onNodeDragStop={(_event, node) => {
             const from = positionsRef.current[node.id];
             transport.movePosition(node.id, node.position);
@@ -621,7 +666,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
             placement.current = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? { x: 120, y: 120 };
             setQuickAdd({ x: event.clientX, y: event.clientY });
           }}
-          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); setQuickAdd(null); setConnectionRejection(null); }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspectionFocus(null); setInspected([]); setGraphAnalysis(null); setQuickAdd(null); setConnectionRejection(null); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />

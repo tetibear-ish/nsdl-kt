@@ -18,6 +18,8 @@ export type PortView = {
   enabled: boolean;
 };
 
+export type InspectionMode = "hover" | "pinned";
+
 export type NetworkNodeData = Record<string, unknown> & {
   snapshot: ObjectSnapshot;
   ports: PortView[];
@@ -25,6 +27,7 @@ export type NetworkNodeData = Record<string, unknown> & {
   onCableDelete?: (cableId: string) => void;
   dhcpLease?: ObjectSnapshot;
   dhcpServer?: ObjectSnapshot;
+  inspection?: InspectionMode;
 };
 
 export type NetworkNode = Node<NetworkNodeData, "network">;
@@ -47,6 +50,7 @@ export function projectTopology(
   onCableDelete?: (cableId: string) => void,
   reconnectingPortId?: string | null,
   schemas: ObjectTypeSchema[] = [],
+  inspection?: { kind: "node" | "edge"; id: string; pinned: boolean } | null,
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
@@ -69,6 +73,9 @@ export function projectTopology(
       onPowerToggle,
       dhcpLease: dhcpLeases[snapshot.id],
       dhcpServer: dhcpServers[snapshot.id],
+      inspection: inspection?.kind === "node" && inspection.id === snapshot.id
+        ? (inspection.pinned ? "pinned" : "hover")
+        : undefined,
       onCableDelete,
       ports: (snapshot.relations.interfaces ?? []).map((id) => {
         const name = id.slice(snapshot.id.length + 1);
@@ -94,11 +101,16 @@ export function projectTopology(
       sourceHandle: endpoints[0],
       target: endpointOwner(endpoints[1]),
       targetHandle: endpoints[1],
-      type: "smoothstep",
+      type: "inspectable",
       selectable: false,
       zIndex: 10,
       className: `topology-edge ${cable.state.connected === false ? "link-unused" : cable.state.linkUp === true ? "link-up" : "link-down"}`,
-      data: { snapshot: cable },
+      data: {
+        snapshot: cable,
+        inspection: inspection?.kind === "edge" && inspection.id === cable.id
+          ? (inspection.pinned ? "pinned" : "hover")
+          : undefined,
+      },
     }];
   });
 

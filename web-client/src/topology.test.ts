@@ -79,6 +79,22 @@ describe("projectTopology", () => {
     expect(projectTopology([...devices, cable(true)]).edges[0].className).toContain("link-up");
   });
 
+  it("projects hover and pinned inspection modes onto the focused element only", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "a", type: "printer", kind: "DEVICE", state: {}, relations: { interfaces: ["a.eth0"] } },
+      { id: "b", type: "ethernet-switch", kind: "DEVICE", state: {}, relations: { interfaces: ["b.port1"] } },
+      { id: "cable1", type: "cat5-cable", kind: "CABLE", state: { connected: true }, relations: { endpoints: ["a.eth0", "b.port1"] } },
+    ];
+
+    const hover = projectTopology(snapshots, {}, undefined, {}, {}, undefined, null, [], { kind: "node", id: "a", pinned: false });
+    expect(hover.nodes.find((node) => node.id === "a")?.data.inspection).toBe("hover");
+    expect(hover.edges[0].data?.inspection).toBeUndefined();
+
+    const pinned = projectTopology(snapshots, {}, undefined, {}, {}, undefined, null, [], { kind: "edge", id: "cable1", pinned: true });
+    expect(pinned.edges[0].data?.inspection).toBe("pinned");
+    expect(pinned.nodes.find((node) => node.id === "a")?.data.inspection).toBeUndefined();
+  });
+
   it("attaches a device's dhcp lease snapshot to its node data when provided", () => {
     const snapshots: ObjectSnapshot[] = [
       { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["printer1.eth0"] } },
