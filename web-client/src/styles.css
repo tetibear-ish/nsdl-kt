@@ -64,6 +64,8 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .dhcp-leases td { padding: 3px 8px 3px 0; color: #dce9f6; font: 12px ui-monospace, monospace; border-top: 1px solid #1c3349; }
 @media (max-width: 800px) { .workspace { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) 180px; } .inspector { border-top: 1px solid #29445f; border-left: 0; } }
 .react-flow { background: transparent; }
+/* Keep cable strokes and reconnect handles above node bodies at shared joints. */
+.react-flow .react-flow__edges { z-index: 1001; }
 .network-node { position: relative; display: grid; min-width: 172px; padding: 17px 24px; border: 2px solid #587087; border-radius: 14px; background: #10253a; box-shadow: 0 14px 30px rgba(0,0,0,.3); text-align: center; }
 .network-node strong { color: #f5f9fd; font-size: 15px; }
 .network-node span { color: #8da5ba; font: 11px ui-monospace, monospace; }
