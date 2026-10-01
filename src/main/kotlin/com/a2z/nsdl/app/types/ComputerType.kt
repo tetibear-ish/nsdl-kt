@@ -13,13 +13,13 @@ import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.net.MacAddress
-import com.a2z.nsdl.print.PrintServer
+import com.a2z.nsdl.print.PrintClient
 import kotlin.time.Duration.Companion.milliseconds
 
-/** A single-interface host with a DHCP client; boot time is configurable. */
-object PrinterType : ObjectType {
+/** A general endpoint host with DHCP and the client side of the teaching print protocol. */
+object ComputerType : ObjectType {
     override val schema = ObjectTypeSchema(
-        name = "printer",
+        name = "computer",
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
@@ -30,16 +30,13 @@ object PrinterType : ObjectType {
 
     override fun create(id: ObjectId, props: Map<String, Any?>, ctx: CreationContext): SimObject {
         val builder = HostBuilder(id, schema.name, ctx.scheduler, ctx.events)
-        val mac = props["mac"] as? MacAddress ?: ctx.nextMac()
-        val eth0 = builder.ethernet("eth0", mac)
-        val clientId = id.child("dhcp-client")
-        val dhcpClient = DhcpClient(clientId, eth0, eth0, ctx.random(clientId), ctx.events)
-        builder.service(dhcpClient)
-        builder.service(PrintServer(id.child("print-server"), eth0))
+        val eth0 = builder.ethernet("eth0", props["mac"] as? MacAddress ?: ctx.nextMac())
+        val dhcpId = id.child("dhcp-client")
+        builder.service(DhcpClient(dhcpId, eth0, eth0, ctx.random(dhcpId), ctx.events))
+        builder.service(PrintClient(id.child("print-client"), eth0))
 
         var bootMs = props["bootMs"] as Long
-        val device = builder.build(bootDuration = { bootMs.milliseconds })
-
+        val device = builder.build { bootMs.milliseconds }
         return SimObject(
             root = device,
             components = device.interfaces + device.services,

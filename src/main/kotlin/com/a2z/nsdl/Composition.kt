@@ -2,6 +2,7 @@ package com.a2z.nsdl
 
 import com.a2z.nsdl.app.TypeRegistry
 import com.a2z.nsdl.app.types.Cat5CableType
+import com.a2z.nsdl.app.types.ComputerType
 import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
@@ -19,6 +20,7 @@ class Composition(randomSeed: Long = System.nanoTime()) {
     val eventHub = EventHub(now = { scheduler.now.millis })
     val registry = TypeRegistry().apply {
         register(PrinterType)
+        register(ComputerType)
         register(DhcpServerHostType)
         register(EthernetSwitchType)
         register(Cat5CableType)

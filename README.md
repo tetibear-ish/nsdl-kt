@@ -104,3 +104,5 @@ select **GitHub Actions** as the source before the first deployment.
   extension points, the simulated link, and the supported DHCP behavior.
 - [IPC protocol](docs/IPC.md) documents protocol version 1, commands, replies,
   events, errors, subscriptions, and reconnect behavior.
+- [Teaching scenarios](docs/SCENARIOS.md) documents bounded, executable network lessons and their
+  current modeling limits.

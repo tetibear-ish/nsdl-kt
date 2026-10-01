@@ -9,14 +9,14 @@ electrical signaling, or host networking.
 Dependencies point inward toward the simulation core:
 
 ```text
-sim <- model/net <- link <- ip <- dhcp/device <- app <- nsdl/events/runtime <- ipc <- Composition/Main
+sim <- model/net <- link <- ip <- dhcp/print/device <- app <- nsdl/events/runtime <- ipc <- Composition/Main
 ```
 
 - `sim` owns deterministic virtual time, scheduled work, and cancellation.
 - `model` and `net` define identity, snapshots, events, addresses, and packets.
 - `link` models Ethernet interfaces and passive point-to-point cables.
 - `ip` provides the minimal IPv4/UDP host stack.
-- `dhcp` and `device` provide protocol state machines and reusable host lifecycle.
+- `dhcp`, `print`, and `device` provide protocol/application state machines and reusable host lifecycle.
 - `app` validates types and commands before changing simulation state.
 - `nsdl` defines topology input; `events` sequences retained event history;
   `runtime` confines mutations to one thread and journals accepted input.

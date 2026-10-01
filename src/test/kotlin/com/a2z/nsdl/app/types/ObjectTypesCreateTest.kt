@@ -29,7 +29,7 @@ class ObjectTypesCreateTest {
     )
 
     @Test
-    fun `creating a printer builds a device with one interface, a DHCP client, and no power yet`() {
+    fun `creating a printer builds a device with DHCP and print services and no power yet`() {
         val validated = validateProperties(PrinterType.schema.properties, mapOf("bootMs" to 500L))
         assertTrue(validated.isValid, "errors: ${validated.errors}")
 
@@ -38,11 +38,23 @@ class ObjectTypesCreateTest {
         assertEquals(ObjectId("printer1"), obj.root.id)
         assertEquals(PowerState.OFF, obj.power?.powerState)
         assertEquals(1, obj.endpoints.size)
-        assertEquals(2, obj.components.size, "one interface + one DHCP client")
+        assertEquals(3, obj.components.size, "one interface + DHCP client + print server")
 
         obj.power!!.powerOn()
         scheduler.advanceBy(1.seconds)
         assertEquals(PowerState.ON, obj.power.powerState)
+    }
+
+    @Test
+    fun `creating a computer builds a device with DHCP and print client services`() {
+        val validated = validateProperties(ComputerType.schema.properties, emptyMap())
+
+        val obj = ComputerType.create(ObjectId("computer1"), validated.properties, ctx)
+
+        assertEquals(ObjectId("computer1"), obj.root.id)
+        assertEquals(PowerState.OFF, obj.power?.powerState)
+        assertEquals(1, obj.endpoints.size)
+        assertEquals(listOf("ethernet", "dhcp-client", "print-client"), obj.components.map { it.snapshot().type })
     }
 
     @Test
