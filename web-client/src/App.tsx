@@ -20,6 +20,7 @@ import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE }
 import { useClockTimeStore } from "./clockStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
+import { ConfigureObjectForm } from "./ConfigureObjectForm";
 import { NetworkNode } from "./NetworkNode";
 import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
@@ -249,6 +250,20 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     return null;
   }, [refresh, removeRecord, setPosition, setRecord, transport]);
 
+  const configureObject = useCallback(async (snapshot: ObjectSnapshot, props: Record<string, string>) => {
+    const result = await transport.execute("configure", { id: snapshot.id, props });
+    if (!result.ok) {
+      const message = `${result.error.code}: ${result.error.message}`;
+      setStatus(message);
+      setLog((entries) => [...entries.slice(-99), `configure ${snapshot.id} failed: ${message}`]);
+      return message;
+    }
+    setRecord(snapshot.id, { type: snapshot.type, props });
+    setLog((entries) => [...entries.slice(-99), `configured ${snapshot.id}; device replacement started`]);
+    await refresh();
+    return null;
+  }, [refresh, setRecord, transport]);
+
   const deleteObject = useCallback(async (id: string) => {
     const cascadedEdges = edges.filter((edge) => edge.source === id || edge.target === id);
     const preview = cascadedEdges.length > 0
@@ -356,6 +371,8 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   }, [createObject, nodes, types]);
 
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
+  const inspectedDevice = inspected[0]?.kind === "DEVICE" ? inspected[0] : null;
+  const inspectedSchema = inspectedDevice ? types.find((type) => type.name === inspectedDevice.type) : undefined;
 
   return (
     <main className="app-shell">
@@ -465,8 +482,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           }}>Disconnect</button>
           <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
         </>}
-        {inspected[0]?.kind === "DEVICE" && (
-          <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
+        {inspectedDevice && (
+          <>
+            {inspectedSchema && <ConfigureObjectForm
+              id={inspectedDevice.id}
+              schema={inspectedSchema}
+              currentProps={records[inspectedDevice.id]?.props}
+              onConfigure={(props) => configureObject(inspectedDevice, props)}
+            />}
+            <button className="secondary" onClick={() => { void deleteObject(inspectedDevice.id); }}>Delete</button>
+          </>
         )}
         {graphAnalysis && <section className="graph-analysis">
           <h3>Graph analysis · {graphAnalysis.nodeId}</h3>
