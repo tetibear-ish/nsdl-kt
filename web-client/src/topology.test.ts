@@ -45,6 +45,7 @@ describe("projectTopology", () => {
         data: { snapshot: snapshots[2] },
         className: "topology-edge link-down",
         selectable: false,
+        zIndex: 10,
       }),
     ]);
   });
