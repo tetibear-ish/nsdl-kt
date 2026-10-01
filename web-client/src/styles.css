@@ -34,6 +34,8 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .graph-analysis dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; color: #a9bdd0; font-size: 11px; }
 .graph-analysis dt { color: #718ba2; }
 .graph-analysis dd { margin: 0; }
+.quick-add { position: fixed; z-index: 30; display: flex; gap: 7px; transform: translate(-8px, -50%); border: 1px solid #38536d; border-radius: 999px; padding: 7px; background: #0d2033; box-shadow: 0 12px 36px #000a; }
+.quick-add button { border-radius: 999px; padding: 7px 11px; font-size: 11px; white-space: nowrap; }
 .dhcp-status { margin: 0 0 8px; padding: 3px 8px; display: inline-block; border-radius: 6px; font: 700 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; }
 .dhcp-status.dhcp-bound { color: #5de4d1; background: rgba(93,228,209,.14); }
 .dhcp-status.dhcp-renewing, .dhcp-status.dhcp-rebinding { color: #ffc96b; background: rgba(255,201,107,.14); }

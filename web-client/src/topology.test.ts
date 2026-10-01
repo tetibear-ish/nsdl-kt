@@ -34,6 +34,7 @@ describe("projectTopology", () => {
 
     expect(projected.nodes).toHaveLength(2);
     expect(projected.nodes.find((node) => node.id === "switch1")?.data.ports).toHaveLength(8);
+    expect(projected.nodes.find((node) => node.id === "printer1")?.data.ports[0].cableId).toBe("cable1");
     expect(projected.edges).toEqual([
       expect.objectContaining({
         id: "cable1",

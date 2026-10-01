@@ -13,7 +13,7 @@ import {
 } from "@xyflow/react";
 import { DropdownMenu } from "radix-ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AddObjectDialog } from "./AddObjectDialog";
+import { AddObjectDialog, defaultObjectId } from "./AddObjectDialog";
 import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
@@ -47,6 +47,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [types, setTypes] = useState<ObjectTypeSchema[]>([]);
   const [addOpen, setAddOpen] = useState(false);
+  const [quickAdd, setQuickAdd] = useState<{ x: number; y: number } | null>(null);
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
   const [inspected, setInspected] = useState<ObjectSnapshot[]>([]);
@@ -70,6 +71,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     if (!result.ok) setStatus(`${result.error.code}: ${result.error.message}`);
     setLog((entries) => [...entries.slice(-99), result.ok ? `${op} ${snapshot.id}` : `${op} ${snapshot.id}: ${result.error.message}`]);
   }, [transport]);
+
+  const deleteCableAtPort = useCallback(async (cableId: string) => {
+    const result = await transport.execute<{ deleted: string[] }>("delete", { id: cableId });
+    if (result.ok) {
+      removeRecord(cableId);
+      setLog((entries) => [...entries.slice(-99), `deleted ${cableId}`]);
+    } else {
+      setStatus(`${result.error.code}: ${result.error.message}`);
+    }
+  }, [removeRecord, transport]);
 
   const loadNodeInspection = useCallback(async (snapshot: ObjectSnapshot) => {
     const results = await Promise.all(inspectionIds(snapshot).map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
@@ -107,7 +118,14 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       fetchDeviceServices(result.data, ".dhcp-client"),
       fetchDeviceServices(result.data, ".dhcp-server"),
     ]);
-    const projected = projectTopology(result.data, useEditorStore.getState().positions, (snapshot) => { void togglePower(snapshot); }, dhcpLeases, dhcpServers);
+    const projected = projectTopology(
+      result.data,
+      useEditorStore.getState().positions,
+      (snapshot) => { void togglePower(snapshot); },
+      dhcpLeases,
+      dhcpServers,
+      (cableId) => { void deleteCableAtPort(cableId); },
+    );
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
       const before = powerStates.current[node.id];
@@ -128,7 +146,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     }
     setStatus(`revision ${result.revision}`);
     return result.revision;
-  }, [fetchDeviceServices, loadGraphAnalysis, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
+  }, [deleteCableAtPort, fetchDeviceServices, loadGraphAnalysis, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -329,6 +347,14 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     setAddOpen(true);
   }, []);
 
+  const quickCreate = useCallback(async (typeName: string) => {
+    const type = types.find((candidate) => candidate.name === typeName);
+    if (!type) return;
+    const id = defaultObjectId(typeName, nodes.map((node) => node.id));
+    setQuickAdd(null);
+    await createObject(type, id, {});
+  }, [createObject, nodes, types]);
+
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
 
   return (
@@ -383,19 +409,17 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       <section className="canvas">
         <ReactFlow<NetworkNodeType, Edge>
           connectionMode={ConnectionMode.Loose}
+          deleteKeyCode={null}
           edges={edges}
-          edgesReconnectable
+          edgesReconnectable={false}
           fitView
           nodes={nodes}
           nodeTypes={nodeTypes}
           onConnect={onConnect}
           onEdgesChange={onEdgesChange}
-          onEdgesDelete={(deleted) => { deleted.forEach((edge) => { void disconnect(edge); }); }}
-          onEdgeDoubleClick={(_event, edge) => { void disconnect(edge); }}
           onEdgeClick={(_event, edge) => { pinnedInspection.current = { kind: "edge", id: edge.id }; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
-          onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
           onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); void loadGraphAnalysis(node.id); }}
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
@@ -408,8 +432,12 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
             }
           }}
           onNodesChange={onNodesChange}
-          onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
-          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); }}
+          onPaneContextMenu={(event) => {
+            event.preventDefault();
+            placement.current = flow.current?.screenToFlowPosition({ x: event.clientX, y: event.clientY }) ?? { x: 120, y: 120 };
+            setQuickAdd({ x: event.clientX, y: event.clientY });
+          }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); setQuickAdd(null); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />
@@ -451,6 +479,11 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         </section>}
       </aside>
       </div>
+      {quickAdd && <nav className="quick-add" style={{ left: quickAdd.x, top: quickAdd.y }} aria-label="Add network object">
+        <button onClick={() => { void quickCreate("printer"); }}>+ Printer</button>
+        <button onClick={() => { void quickCreate("gateway"); }}>+ Gateway</button>
+        <button onClick={() => { void quickCreate("ethernet-switch"); }}>+ Switch</button>
+      </nav>}
       <section className="activity-log" aria-label="Activity log">
         <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
         <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>

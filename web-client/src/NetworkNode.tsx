@@ -60,6 +60,11 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
             id={port.id}
             isConnectable={!port.occupied}
             key={port.id}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              if (port.cableId) data.onCableDelete?.(port.cableId);
+            }}
             position={left ? Position.Left : Position.Right}
             type="source"
             style={{

@@ -5,12 +5,14 @@ export type PortView = {
   id: string;
   name: string;
   occupied: boolean;
+  cableId?: string;
 };
 
 export type NetworkNodeData = Record<string, unknown> & {
   snapshot: ObjectSnapshot;
   ports: PortView[];
   onPowerToggle?: (snapshot: ObjectSnapshot) => void;
+  onCableDelete?: (cableId: string) => void;
   dhcpLease?: ObjectSnapshot;
   dhcpServer?: ObjectSnapshot;
 };
@@ -32,9 +34,11 @@ export function projectTopology(
   onPowerToggle?: (snapshot: ObjectSnapshot) => void,
   dhcpLeases: Record<string, ObjectSnapshot> = {},
   dhcpServers: Record<string, ObjectSnapshot> = {},
+  onCableDelete?: (cableId: string) => void,
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
+  const cableByEndpoint = new Map(cables.flatMap((cable) => (cable.relations.endpoints ?? []).map((endpoint) => [endpoint, cable.id] as const)));
   const devices = snapshots.filter((snapshot) => snapshot.kind === "DEVICE");
 
   const nodes: NetworkNode[] = devices.map((snapshot, index) => ({
@@ -50,10 +54,12 @@ export function projectTopology(
       onPowerToggle,
       dhcpLease: dhcpLeases[snapshot.id],
       dhcpServer: dhcpServers[snapshot.id],
+      onCableDelete,
       ports: (snapshot.relations.interfaces ?? []).map((id) => ({
         id,
         name: id.slice(snapshot.id.length + 1),
         occupied: occupied.has(id),
+        cableId: cableByEndpoint.get(id),
       })),
     },
   }));
