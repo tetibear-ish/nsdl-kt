@@ -199,6 +199,7 @@ class WebSimulation(seed: Long = 0L) {
             is EventPayload.FrameDropped -> mapOf("reason" to payload.reason.name)
             is EventPayload.LinkStateChanged -> mapOf("up" to payload.up)
             is EventPayload.ProtocolStateChanged -> mapOf("protocol" to payload.protocol, "from" to payload.from, "to" to payload.to)
+            is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
             else -> emptyMap<String, Any?>()
         },
     )

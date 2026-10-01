@@ -40,12 +40,13 @@ sealed interface EventPayload {
     data class ProtocolStateChanged(val protocol: String, val from: String, val to: String, val detail: String = "") : EventPayload
     data class NetworkConfigChanged(val config: Ipv4Config?) : EventPayload
     data class ConfigurationChanged(val properties: Map<String, Any?>) : EventPayload
+    data class DecisionRecorded(val record: DecisionRecord) : EventPayload
 
     companion object {
         val NAMES: Set<String> = setOf(
             "ObjectCreated", "ObjectDeleted", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
             "LinkStateChanged", "FrameSent", "FrameReceived", "FrameDropped", "PacketAccepted",
-            "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged",
+            "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged", "DecisionRecorded",
         )
     }
 }

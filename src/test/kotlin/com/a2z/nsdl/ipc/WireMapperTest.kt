@@ -2,10 +2,14 @@ package com.a2z.nsdl.ipc
 
 import com.a2z.nsdl.ip.toState
 import com.a2z.nsdl.model.DropReason
+import com.a2z.nsdl.model.DecisionAction
+import com.a2z.nsdl.model.DecisionParents
+import com.a2z.nsdl.model.DecisionRecord
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.PowerState
+import com.a2z.nsdl.model.Responsibility
 import com.a2z.nsdl.net.ConfigSource
 import com.a2z.nsdl.net.EthernetFrame
 import com.a2z.nsdl.net.Ipv4Address
@@ -118,5 +122,25 @@ class WireMapperTest {
             mapOf("properties" to mapOf("bootMs" to 500L)),
             WireMapper.toData(EventPayload.ConfigurationChanged(mapOf("bootMs" to 500L))),
         )
+    }
+
+    @Test
+    fun `maps DecisionRecorded with causal identifiers without reconstructing it`() {
+        val record = DecisionRecord(
+            id = "switch1:decision:7",
+            responsibility = Responsibility.SWITCHING,
+            decision = DecisionAction.FORWARD,
+            reason = "destination learned on egress port",
+            parents = DecisionParents(
+                intentionId = "intent-1",
+                processId = "ssh-1",
+                sessionId = "tcp-1",
+                exchangeId = "handshake-1",
+                packetId = "packet-3",
+            ),
+            attributes = mapOf("egress" to "switch1.port2"),
+        )
+
+        assertEquals(mapOf("record" to record.toState()), WireMapper.toData(EventPayload.DecisionRecorded(record)))
     }
 }
