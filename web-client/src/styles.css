@@ -22,6 +22,11 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .dropdown-item { border-radius: 6px; padding: 9px 12px; color: #d9e6f2; font-size: 13px; cursor: pointer; outline: none; }
 .dropdown-item[data-highlighted] { background: #185052; color: #d4fff9; }
 .dropdown-separator { height: 1px; margin: 6px 4px; background: #29445f; }
+.history-dropdown { width: min(520px, calc(100vw - 32px)); max-height: min(480px, calc(100vh - 90px)); overflow-y: auto; }
+.history-entry { display: grid; grid-template-columns: 62px minmax(0, 1fr) auto; align-items: baseline; gap: 10px; cursor: default; }
+.history-entry code { color: #5de4d1; font-size: 11px; }
+.history-entry span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.history-entry small { color: #ffc96b; font-size: 10px; text-transform: uppercase; }
 .canvas { min-height: 0; }
 .workspace { min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) 320px; }
 .inspector { min-width: 0; overflow: auto; border-left: 1px solid #29445f; padding: 16px; background: rgba(7, 19, 31, .92); }

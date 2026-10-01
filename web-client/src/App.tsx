@@ -21,6 +21,7 @@ import { useClockTimeStore } from "./clockStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { ConfigureObjectForm } from "./ConfigureObjectForm";
+import { HistoryDropdown } from "./HistoryDropdown";
 import { NetworkNode } from "./NetworkNode";
 import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
@@ -395,6 +396,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           </div>
           <button onClick={() => openAddAt()}>Add…</button>
           <button className="secondary" onClick={() => { void undo(); }}>Undo</button>
+          <HistoryDropdown />
           <DropdownMenu.Root>
             <DropdownMenu.Trigger asChild>
               <button className="secondary icon-button" aria-label="Lab options">⋯</button>
