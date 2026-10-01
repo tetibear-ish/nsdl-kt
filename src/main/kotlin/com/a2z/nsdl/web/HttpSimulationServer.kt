@@ -1,5 +1,6 @@
 package com.a2z.nsdl.web
 
+import com.a2z.nsdl.Composition
 import com.a2z.nsdl.app.CommandError
 import com.a2z.nsdl.app.CommandResult
 import com.a2z.nsdl.app.ErrorCode
@@ -10,8 +11,12 @@ import com.a2z.nsdl.ipc.DecodeResult
 import com.a2z.nsdl.ipc.IpcOperation
 import com.a2z.nsdl.ipc.ReplyCodec
 import com.a2z.nsdl.ipc.RequestCodec
+import com.a2z.nsdl.ipc.json.Json
+import com.a2z.nsdl.ipc.json.JsonParseException
 import com.a2z.nsdl.runtime.Request
 import com.a2z.nsdl.runtime.SimulationRuntime
+import com.a2z.nsdl.scenario.ScenarioRunner
+import com.a2z.nsdl.scenario.teaching.ScenarioCatalog
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
 import java.io.IOException
@@ -39,6 +44,7 @@ class HttpSimulationServer(
         server.executor = executor
         server.createContext("/api/command", ::handleCommand)
         server.createContext("/api/events", ::handleEvents)
+        server.createContext("/api/scenarios", ::handleScenarios)
         server.createContext("/", ::handleStatic)
     }
 
@@ -115,6 +121,43 @@ class HttpSimulationServer(
                     exchange.close()
                 }
             }
+        }
+    }
+
+    /**
+     * Runs a named scenario end to end against its own fresh [Composition] -- separate from the live
+     * lab this server otherwise exposes -- and returns its pass/fail result. This is how the browser
+     * runs the same scenario the CLI's `scenario run` and a JUnit test do.
+     */
+    private fun handleScenarios(exchange: HttpExchange) {
+        val path = exchange.requestURI.path
+        when {
+            path == "/api/scenarios" && exchange.requestMethod == "GET" ->
+                exchange.respond(200, "application/json", Json.write(mapOf("scenarios" to ScenarioCatalog.all.keys.sorted())))
+            path == "/api/scenarios/run" && exchange.requestMethod == "POST" -> handleScenarioRun(exchange)
+            path == "/api/scenarios" || path == "/api/scenarios/run" -> exchange.respond(405, "text/plain", "method not allowed")
+            else -> exchange.respond(404, "text/plain", "not found")
+        }
+    }
+
+    private fun handleScenarioRun(exchange: HttpExchange) {
+        val bytes = exchange.requestBody.readNBytes(maxRequestBytes + 1)
+        if (bytes.size > maxRequestBytes) return exchange.respond(413, "text/plain", "request too large")
+        val body = try {
+            Json.parse(bytes.toString(StandardCharsets.UTF_8)) as? Map<*, *> ?: emptyMap<String, Any?>()
+        } catch (e: JsonParseException) {
+            return exchange.respond(400, "text/plain", "malformed JSON: ${e.message}")
+        }
+        val name = body["name"] as? String ?: return exchange.respond(400, "text/plain", "missing 'name'")
+        val factory = ScenarioCatalog.all[name] ?: return exchange.respond(404, "text/plain", "unknown scenario '$name'")
+        val seed = (body["seed"] as? Long) ?: 0L
+
+        val composition = Composition(seed)
+        try {
+            val result = ScenarioRunner(composition.runtime).run(factory())
+            exchange.respond(200, "application/json", Json.write(result.toWireData()))
+        } finally {
+            composition.close()
         }
     }
 

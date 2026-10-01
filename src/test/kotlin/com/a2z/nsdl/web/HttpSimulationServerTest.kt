@@ -54,6 +54,47 @@ class HttpSimulationServerTest {
         events.disconnect()
     }
 
+    @Test
+    fun `GET api scenarios lists the built-in teaching scenarios`() {
+        server.start()
+        val http = HttpClient.newHttpClient()
+
+        val reply = http.send(
+            HttpRequest.newBuilder(URI("http://127.0.0.1:${server.port}/api/scenarios")).GET().build(),
+            HttpResponse.BodyHandlers.ofString(),
+        )
+
+        assertEquals(200, reply.statusCode())
+        @Suppress("UNCHECKED_CAST")
+        val decoded = Json.parse(reply.body()) as Map<String, Any?>
+        assertTrue((decoded["scenarios"] as List<*>).contains("print-job"))
+    }
+
+    @Test
+    fun `POST api scenarios run executes a named scenario and reports its pass-fail result`() {
+        server.start()
+        val http = HttpClient.newHttpClient()
+
+        val reply = post(http, "http://127.0.0.1:${server.port}/api/scenarios/run", """{"name":"print-job","seed":7}""")
+
+        assertEquals(200, reply.statusCode())
+        @Suppress("UNCHECKED_CAST")
+        val decoded = Json.parse(reply.body()) as Map<String, Any?>
+        assertEquals("print-job", decoded["name"])
+        assertEquals("PASSED", decoded["status"])
+        assertTrue((decoded["outcomes"] as List<*>).isNotEmpty())
+    }
+
+    @Test
+    fun `POST api scenarios run with an unknown name reports a 404`() {
+        server.start()
+        val http = HttpClient.newHttpClient()
+
+        val reply = post(http, "http://127.0.0.1:${server.port}/api/scenarios/run", """{"name":"bogus"}""")
+
+        assertEquals(404, reply.statusCode())
+    }
+
     private fun post(client: HttpClient, url: String, body: String): HttpResponse<String> = client.send(
         HttpRequest.newBuilder(URI(url))
             .header("Content-Type", "application/json")
