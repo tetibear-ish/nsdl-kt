@@ -1,0 +1,10 @@
+package com.a2z.nsdl.scenario.teaching
+
+import com.a2z.nsdl.scenario.Scenario
+
+/** Named, built-in teaching scenarios, lookupable by the CLI and the browser alike. */
+object ScenarioCatalog {
+    val all: Map<String, () -> Scenario> = mapOf(
+        "print-job" to ::printJobScenario,
+    )
+}
