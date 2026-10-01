@@ -28,7 +28,7 @@ class RecordingUdpTransport : UdpTransport, IpConfigurable {
     private val handlers = mutableMapOf<Int, UdpHandler>()
 
     override fun addLinkListener(listener: (Boolean) -> Unit) = Unit
-    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress): Boolean {
+    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress, ttl: Int): Boolean {
         sent += Sent(srcPort, dst, dstPort, payload, dstMac)
         return true
     }

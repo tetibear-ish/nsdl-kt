@@ -27,7 +27,7 @@ interface UdpTransport {
     val linkUp: Boolean
     fun addLinkListener(listener: (Boolean) -> Unit)
     /** Sends a datagram. Without ARP, unicast needs an explicit [dstMac]; broadcast uses ff:ff:ff:ff:ff:ff. */
-    fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress = MacAddress.BROADCAST): Boolean
+    fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress = MacAddress.BROADCAST, ttl: Int = 64): Boolean
     fun bind(port: Int, handler: UdpHandler)
     fun unbind(port: Int)
 }
@@ -38,10 +38,24 @@ fun interface IpConfigurable {
 }
 
 /**
- * Minimal per-interface IPv4 host stack: one address, UDP only, no ARP, no routing or fragmentation.
- * Accepts packets addressed to its address, the limited broadcast, or its subnet broadcast.
+ * Handed an inbound frame whose IPv4 destination is not this interface's own address. Lets a router
+ * compose several [Ipv4Stack]s and forward between them instead of each one silently dropping traffic
+ * meant for another interface. Absent (the default), such a frame is dropped as [DropReason.NO_LISTENER].
  */
-class Ipv4Stack(private val port: FramePort, private val events: EventSink) : UdpTransport, IpConfigurable {
+fun interface Ipv4Forwarder {
+    fun forward(frame: EthernetFrame, packet: Ipv4Packet)
+}
+
+/**
+ * Minimal per-interface IPv4 host stack: one address, UDP only, no ARP, no fragmentation. Accepts
+ * packets addressed to its address, the limited broadcast, or its subnet broadcast; anything else is
+ * handed to [forwarder] when present, or dropped.
+ */
+class Ipv4Stack(
+    private val port: FramePort,
+    private val events: EventSink,
+    private val forwarder: Ipv4Forwarder? = null,
+) : UdpTransport, IpConfigurable {
     private val listeners = mutableMapOf<Int, UdpHandler>()
 
     override var config: Ipv4Config? = null
@@ -69,13 +83,17 @@ class Ipv4Stack(private val port: FramePort, private val events: EventSink) : Ud
         events.emit(port.id, EventPayload.NetworkConfigChanged(config))
     }
 
-    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress): Boolean {
-        val packet = Ipv4Packet(config?.address ?: Ipv4Address.ANY, dst, UdpDatagram(srcPort, dstPort, payload))
+    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress, ttl: Int): Boolean {
+        val packet = Ipv4Packet(config?.address ?: Ipv4Address.ANY, dst, UdpDatagram(srcPort, dstPort, payload), ttl = ttl)
         return port.send(EthernetFrame(port.mac, dstMac, packet))
     }
 
     private fun onFrame(frame: EthernetFrame) {
         val packet = frame.payload as? Ipv4Packet
+        if (packet != null && !isForUs(packet.dst) && forwarder != null) {
+            forwarder.forward(frame, packet)
+            return
+        }
         val datagram = packet?.payload as? UdpDatagram
         val handler = datagram?.let { listeners[it.dstPort] }
         if (packet == null || datagram == null || handler == null || !isForUs(packet.dst)) {

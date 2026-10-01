@@ -22,10 +22,18 @@ class HostBuilder(
     private val interfaces = mutableListOf<EthernetInterface>()
     private val services = mutableListOf<DeviceService>()
 
-    fun ethernet(name: String, mac: MacAddress, media: MediaType = MediaType.TWISTED_PAIR): Ipv4Stack {
+    fun ethernet(name: String, mac: MacAddress, media: MediaType = MediaType.TWISTED_PAIR): Ipv4Stack =
+        Ipv4Stack(ethernetRaw(name, mac, media), events)
+
+    /**
+     * Adds an Ethernet interface tracked for this device's lifecycle (enabled on boot, disabled on
+     * stop) without wrapping it in a single-address [Ipv4Stack]. This is the seam a multi-interface
+     * device (e.g. a routed gateway composing [com.a2z.nsdl.ip.Router]) uses instead of [ethernet].
+     */
+    fun ethernetRaw(name: String, mac: MacAddress, media: MediaType = MediaType.TWISTED_PAIR): EthernetInterface {
         val eth = EthernetInterface(id.child(name), mac, events, media, ownerId = id)
         interfaces += eth
-        return Ipv4Stack(eth, events)
+        return eth
     }
 
     fun service(s: DeviceService) {
