@@ -1,5 +1,9 @@
 import type { Edge, Node, XYPosition } from "@xyflow/react";
-import type { ObjectSnapshot } from "./types";
+import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
+
+/** Media reported for a port whose owning device's type schema isn't known yet (e.g. before
+ *  listTypes has resolved), or whose schema has no matching interface. Never a real MediaType. */
+export const UNKNOWN_MEDIA = "UNKNOWN";
 
 export type PortView = {
   id: string;
@@ -7,6 +11,11 @@ export type PortView = {
   occupied: boolean;
   cableId?: string;
   reconnectable: boolean;
+  /** The port's physical media (e.g. "TWISTED_PAIR"), from its object type's interface spec. */
+  media: string;
+  /** Whether the owning device is powered on. A disabled port can still accept a cable --
+   *  a device can be plugged in while off -- but should look visually distinct. */
+  enabled: boolean;
 };
 
 export type NetworkNodeData = Record<string, unknown> & {
@@ -37,11 +46,15 @@ export function projectTopology(
   dhcpServers: Record<string, ObjectSnapshot> = {},
   onCableDelete?: (cableId: string) => void,
   reconnectingPortId?: string | null,
+  schemas: ObjectTypeSchema[] = [],
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
   const cableByEndpoint = new Map(cables.flatMap((cable) => (cable.relations.endpoints ?? []).map((endpoint) => [endpoint, cable.id] as const)));
   const devices = snapshots.filter((snapshot) => snapshot.kind === "DEVICE");
+  const schemaByType = new Map(schemas.map((schema) => [schema.name, schema]));
+  const mediaOf = (deviceType: string, portName: string) =>
+    schemaByType.get(deviceType)?.interfaces.find((iface) => iface.name === portName)?.media ?? UNKNOWN_MEDIA;
 
   const nodes: NetworkNode[] = devices.map((snapshot, index) => ({
     id: snapshot.id,
@@ -57,13 +70,18 @@ export function projectTopology(
       dhcpLease: dhcpLeases[snapshot.id],
       dhcpServer: dhcpServers[snapshot.id],
       onCableDelete,
-      ports: (snapshot.relations.interfaces ?? []).map((id) => ({
-        id,
-        name: id.slice(snapshot.id.length + 1),
-        occupied: occupied.has(id),
-        cableId: cableByEndpoint.get(id),
-        reconnectable: id === reconnectingPortId,
-      })),
+      ports: (snapshot.relations.interfaces ?? []).map((id) => {
+        const name = id.slice(snapshot.id.length + 1);
+        return {
+          id,
+          name,
+          occupied: occupied.has(id),
+          cableId: cableByEndpoint.get(id),
+          reconnectable: id === reconnectingPortId,
+          media: mediaOf(snapshot.type, name),
+          enabled: snapshot.state.power === "ON",
+        };
+      }),
     },
   }));
 

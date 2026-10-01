@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { projectTopology } from "./topology";
-import type { ObjectSnapshot } from "./types";
+import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
 
 describe("projectTopology", () => {
   it("projects device interfaces to handles and a connected cable to an edge", () => {
@@ -101,6 +101,43 @@ describe("projectTopology", () => {
     const projected = projectTopology(snapshots);
 
     expect(projected.nodes[0].data.dhcpLease).toBeUndefined();
+  });
+
+  it("resolves each port's media from the object type schema", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["printer1.eth0"] } },
+    ];
+    const schemas: ObjectTypeSchema[] = [
+      { name: "printer", kind: "DEVICE", properties: [], interfaces: [{ name: "eth0", media: "TWISTED_PAIR" }] },
+    ];
+
+    const projected = projectTopology(snapshots, {}, undefined, {}, {}, undefined, null, schemas);
+
+    expect(projected.nodes[0].data.ports[0].media).toBe("TWISTED_PAIR");
+  });
+
+  it("marks a port's media unknown when no schema is available", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["printer1.eth0"] } },
+    ];
+
+    const projected = projectTopology(snapshots);
+
+    expect(projected.nodes[0].data.ports[0].media).toBe("UNKNOWN");
+  });
+
+  it("marks ports enabled only while their owning device is powered on", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "printer1", type: "printer", kind: "DEVICE", state: { power: "ON" }, relations: { interfaces: ["printer1.eth0"] } },
+      { id: "printer2", type: "printer", kind: "DEVICE", state: { power: "OFF" }, relations: { interfaces: ["printer2.eth0"] } },
+      { id: "printer3", type: "printer", kind: "DEVICE", state: { power: "BOOTING" }, relations: { interfaces: ["printer3.eth0"] } },
+    ];
+
+    const projected = projectTopology(snapshots);
+
+    expect(projected.nodes.find((node) => node.id === "printer1")?.data.ports[0].enabled).toBe(true);
+    expect(projected.nodes.find((node) => node.id === "printer2")?.data.ports[0].enabled).toBe(false);
+    expect(projected.nodes.find((node) => node.id === "printer3")?.data.ports[0].enabled).toBe(false);
   });
 
   it("attaches a device's dhcp server snapshot to its node data when provided", () => {
