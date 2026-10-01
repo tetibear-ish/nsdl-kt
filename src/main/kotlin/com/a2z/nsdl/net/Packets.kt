@@ -45,3 +45,18 @@ data class UdpDatagram(val srcPort: Int, val dstPort: Int, val payload: UdpPaylo
 data class OpaquePayload(val label: String) : UdpPayload {
     override fun describe() = "DATA($label)"
 }
+
+/**
+ * Generic protocol-envelope fields for presentation (packet inspection, per-cable history): IPv4
+ * addresses and, for UDP, ports. Read-only decode of the typed model; it never drives simulation
+ * behavior and knows nothing about application-layer payloads (e.g. DHCP) -- that decode lives
+ * alongside the typed payload itself, higher up the dependency chain.
+ */
+fun EthernetFrame.decodeEnvelope(): Map<String, Any?> = when (val p = payload) {
+    is Ipv4Packet -> {
+        val base = mapOf("protocol" to "IPv4", "sourceIp" to p.src.toString(), "destIp" to p.dst.toString())
+        when (val inner = p.payload) {
+            is UdpDatagram -> base + mapOf("protocol" to "UDP", "sourcePort" to inner.srcPort, "destPort" to inner.dstPort)
+        }
+    }
+}
