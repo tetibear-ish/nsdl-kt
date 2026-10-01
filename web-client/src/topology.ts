@@ -68,7 +68,7 @@ export function projectTopology(
       target: endpointOwner(endpoints[1]),
       targetHandle: endpoints[1],
       type: "smoothstep",
-      className: "topology-edge",
+      className: `topology-edge ${cable.state.connected === false ? "link-unused" : cable.state.linkUp === true ? "link-up" : "link-down"}`,
       data: { snapshot: cable },
     }];
   });

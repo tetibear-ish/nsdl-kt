@@ -1,4 +1,5 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { CSSProperties } from "react";
 import { useActivityStore } from "./activityStore";
 import { formatVirtualTime } from "./clock";
 import { useClockTimeStore } from "./clockStore";
@@ -61,7 +62,10 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
             key={port.id}
             position={left ? Position.Left : Position.Right}
             type="source"
-            style={{ top: `${((sideIndex + 1) / (sideCount + 1)) * 100}%` }}
+            style={{
+              top: `${((sideIndex + 1) / (sideCount + 1)) * 100}%`,
+              ...(pulse ? { "--pulse-strength": Math.min(pulse.count, 6), animationDuration: `${Math.max(80, 400 / pulse.count)}ms` } : {}),
+            } as CSSProperties}
             title={`${port.name}${port.occupied ? " (connected)" : ""}`}
           />
         );

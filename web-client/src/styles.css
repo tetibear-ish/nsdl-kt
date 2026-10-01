@@ -30,6 +30,10 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .inspector p { color: #718ba2; font-size: 13px; }
 .inspector pre { margin: 0; overflow: auto; white-space: pre-wrap; color: #c2d4e4; font: 11px/1.5 ui-monospace, monospace; }
 .inspector button { width: 100%; margin-top: 14px; }
+.graph-analysis { margin-top: 18px; border-top: 1px solid #29445f; padding-top: 6px; }
+.graph-analysis dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; color: #a9bdd0; font-size: 11px; }
+.graph-analysis dt { color: #718ba2; }
+.graph-analysis dd { margin: 0; }
 .dhcp-status { margin: 0 0 8px; padding: 3px 8px; display: inline-block; border-radius: 6px; font: 700 11px ui-monospace, monospace; text-transform: uppercase; letter-spacing: .06em; }
 .dhcp-status.dhcp-bound { color: #5de4d1; background: rgba(93,228,209,.14); }
 .dhcp-status.dhcp-renewing, .dhcp-status.dhcp-rebinding { color: #ffc96b; background: rgba(255,201,107,.14); }
@@ -60,10 +64,15 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .power-booting .node-status { background: #ffc96b; }
 .react-flow__handle.port { width: 12px; height: 12px; border: 2px solid #9bb1c5; background: #10253a; }
 .react-flow__handle.port.occupied { border-color: #5de4d1; background: #2a706b; }
-.react-flow__handle.port.pulse-tx { border-color: #6bb8ff; background: #6bb8ff; box-shadow: 0 0 10px 2px #6bb8ff; }
-.react-flow__handle.port.pulse-rx { border-color: #7de47f; background: #7de47f; box-shadow: 0 0 10px 2px #7de47f; }
-.react-flow__handle.port.pulse-drop { border-color: #ff6b6b; background: #ff6b6b; box-shadow: 0 0 10px 2px #ff6b6b; }
-.topology-edge path { stroke: #66839d; stroke-width: 3; }
+.react-flow__handle.port[class*="pulse-"] { animation: port-flash 400ms ease-in-out infinite alternate; }
+.react-flow__handle.port.pulse-tx { --pulse-color: #6bb8ff; border-color: var(--pulse-color); background: var(--pulse-color); }
+.react-flow__handle.port.pulse-rx { --pulse-color: #7de47f; border-color: var(--pulse-color); background: var(--pulse-color); }
+.react-flow__handle.port.pulse-drop { --pulse-color: #ff6b6b; border-color: var(--pulse-color); background: var(--pulse-color); }
+@keyframes port-flash { from { box-shadow: 0 0 3px var(--pulse-color); opacity: .45; } to { box-shadow: 0 0 calc(5px + var(--pulse-strength) * 2px) 2px var(--pulse-color); opacity: 1; } }
+.topology-edge path { stroke-width: 3; }
+.topology-edge.link-unused path { stroke: #66717c; }
+.topology-edge.link-down path { stroke: #e59a45; }
+.topology-edge.link-up path { stroke: #4bd18b; filter: drop-shadow(0 0 3px rgba(75, 209, 139, .45)); }
 .dialog-overlay { position: fixed; inset: 0; z-index: 20; background: rgba(2, 8, 15, .72); backdrop-filter: blur(4px); }
 .dialog-content { position: fixed; z-index: 21; top: 50%; left: 50%; width: min(470px, calc(100vw - 32px)); max-height: 85vh; overflow: auto; transform: translate(-50%, -50%); border: 1px solid #38536d; border-radius: 16px; padding: 24px; background: #0d2033; box-shadow: 0 24px 80px #0009; }
 .dialog-content h2 { margin: 0 0 6px; }

@@ -21,6 +21,7 @@ import { useClockTimeStore } from "./clockStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { NetworkNode } from "./NetworkNode";
+import { analyzeGraph } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
 import {
   buildDocument,
@@ -49,6 +50,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
   const [inspected, setInspected] = useState<ObjectSnapshot[]>([]);
+  const [analysisRoot, setAnalysisRoot] = useState<string | null>(null);
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
@@ -323,6 +325,11 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   }, []);
 
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
+  const graphAnalysis = useMemo(() => analysisRoot ? analyzeGraph(
+    nodes.map((node) => node.id),
+    edges.map((edge) => [edge.source, edge.target] as [string, string]),
+    analysisRoot,
+  ) : null, [analysisRoot, edges, nodes]);
 
   return (
     <main className="app-shell">
@@ -390,7 +397,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
-          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); }}
+          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; setAnalysisRoot(node.id); void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onNodeDragStop={(_event, node) => {
@@ -402,7 +409,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           }}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
-          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setAnalysisRoot(null); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />
@@ -433,6 +440,15 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         {inspected[0]?.kind === "DEVICE" && (
           <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
         )}
+        {graphAnalysis && <section className="graph-analysis">
+          <h3>Graph analysis · {analysisRoot}</h3>
+          <dl>
+            <dt>Degree</dt><dd>{graphAnalysis.degree}</dd>
+            <dt>Connected component</dt><dd>{graphAnalysis.component.join(", ")}</dd>
+            <dt>Articulation point</dt><dd>{graphAnalysis.articulationPoint ? "yes" : "no"}</dd>
+          </dl>
+          <details><summary>Shortest paths</summary><pre>{JSON.stringify(graphAnalysis.shortestPaths, null, 2)}</pre></details>
+        </section>}
       </aside>
       </div>
       <section className="activity-log" aria-label="Activity log">

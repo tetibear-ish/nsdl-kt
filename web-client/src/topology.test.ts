@@ -25,7 +25,7 @@ describe("projectTopology", () => {
         id: "cable1",
         type: "cat5-cable",
         kind: "CABLE",
-        state: { connected: true },
+        state: { connected: true, linkUp: false },
         relations: { endpoints: ["printer1.eth0", "switch1.port1"] },
       },
     ];
@@ -42,8 +42,22 @@ describe("projectTopology", () => {
         target: "switch1",
         targetHandle: "switch1.port1",
         data: { snapshot: snapshots[2] },
+        className: "topology-edge link-down",
       }),
     ]);
+  });
+
+  it("colors operational links green and down links orange", () => {
+    const devices: ObjectSnapshot[] = [
+      { id: "a", type: "printer", kind: "DEVICE", state: {}, relations: {} },
+      { id: "b", type: "ethernet-switch", kind: "DEVICE", state: {}, relations: {} },
+    ];
+    const cable = (linkUp: boolean): ObjectSnapshot => ({
+      id: "c", type: "cat5-cable", kind: "CABLE", state: { connected: true, linkUp },
+      relations: { endpoints: ["a.eth0", "b.port1"] },
+    });
+    expect(projectTopology([...devices, cable(false)]).edges[0].className).toContain("link-down");
+    expect(projectTopology([...devices, cable(true)]).edges[0].className).toContain("link-up");
   });
 
   it("attaches a device's dhcp lease snapshot to its node data when provided", () => {

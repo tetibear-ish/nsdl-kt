@@ -46,14 +46,14 @@ describe("eventToPulse: endpoint mapping and TX/RX/drop direction", () => {
 describe("applyPulse", () => {
   it("sets a port's pulse to expire pulseDurationMs after now", () => {
     const pulses = applyPulse({}, "printer1.eth0", "tx", 1000, 400);
-    expect(pulses).toEqual({ "printer1.eth0": { kind: "tx", expiresAt: 1400 } });
+    expect(pulses).toEqual({ "printer1.eth0": { kind: "tx", expiresAt: 1400, count: 1 } });
   });
 
   it("a later event at the same port overwrites (coalesces) the earlier pulse rather than accumulating", () => {
     let pulses = applyPulse({}, "printer1.eth0", "tx", 1000, 400);
     pulses = applyPulse(pulses, "printer1.eth0", "rx", 1100, 400);
     expect(Object.keys(pulses)).toHaveLength(1);
-    expect(pulses["printer1.eth0"]).toEqual({ kind: "rx", expiresAt: 1500 });
+    expect(pulses["printer1.eth0"]).toEqual({ kind: "rx", expiresAt: 1500, count: 2 });
   });
 
   it("leaves other ports' pulses untouched", () => {
@@ -66,14 +66,14 @@ describe("applyPulse", () => {
 describe("pruneExpired", () => {
   it("removes only pulses whose expiry has passed, keeping still-active ones", () => {
     const pulses = {
-      expired: { kind: "tx" as const, expiresAt: 1000 },
-      active: { kind: "rx" as const, expiresAt: 2000 },
+      expired: { kind: "tx" as const, expiresAt: 1000, count: 1 },
+      active: { kind: "rx" as const, expiresAt: 2000, count: 1 },
     };
-    expect(pruneExpired(pulses, 1500)).toEqual({ active: { kind: "rx", expiresAt: 2000 } });
+    expect(pruneExpired(pulses, 1500)).toEqual({ active: { kind: "rx", expiresAt: 2000, count: 1 } });
   });
 
   it("a pulse expiring exactly now is removed", () => {
-    const pulses = { p: { kind: "tx" as const, expiresAt: 1000 } };
+    const pulses = { p: { kind: "tx" as const, expiresAt: 1000, count: 1 } };
     expect(pruneExpired(pulses, 1000)).toEqual({});
   });
 });

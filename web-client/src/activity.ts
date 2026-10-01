@@ -1,7 +1,7 @@
 import type { SimulationEvent } from "./types";
 
 export type PulseKind = "tx" | "rx" | "drop";
-export type PortPulse = { kind: PulseKind; expiresAt: number };
+export type PortPulse = { kind: PulseKind; expiresAt: number; count: number };
 /** Port id (e.g. "printer1.eth0") -> its current pulse, if any. */
 export type PulseMap = Record<string, PortPulse>;
 export type PacketEvent = { seq: number; portId: string; kind: PulseKind; reason?: string };
@@ -22,7 +22,9 @@ export function eventToPulse(event: SimulationEvent): { portId: string; kind: Pu
 
 /** Sets (or coalesces, if already pulsing) a port's pulse -- always exactly one entry per port. */
 export function applyPulse(pulses: PulseMap, portId: string, kind: PulseKind, now: number, durationMs: number): PulseMap {
-  return { ...pulses, [portId]: { kind, expiresAt: now + durationMs } };
+  const previous = pulses[portId];
+  const count = previous && previous.expiresAt > now ? previous.count + 1 : 1;
+  return { ...pulses, [portId]: { kind, expiresAt: now + durationMs, count } };
 }
 
 /** Drops pulses whose expiry has passed; still-active ones are kept untouched. */
