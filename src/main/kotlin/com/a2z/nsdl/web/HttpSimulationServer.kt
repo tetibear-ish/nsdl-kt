@@ -10,7 +10,14 @@ import com.a2z.nsdl.ipc.DecodeResult
 import com.a2z.nsdl.ipc.IpcOperation
 import com.a2z.nsdl.ipc.ReplyCodec
 import com.a2z.nsdl.ipc.RequestCodec
+import com.a2z.nsdl.ipc.json.Json
+import com.a2z.nsdl.ipc.json.JsonParseException
+import com.a2z.nsdl.runtime.MoveOutcome
+import com.a2z.nsdl.runtime.MoveRequest
+import com.a2z.nsdl.runtime.Position
 import com.a2z.nsdl.runtime.Request
+import com.a2z.nsdl.runtime.SessionDelivery
+import com.a2z.nsdl.runtime.SessionSubscribeResult
 import com.a2z.nsdl.runtime.SimulationRuntime
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -32,6 +39,7 @@ class HttpSimulationServer(
     private val executor: ExecutorService = Executors.newCachedThreadPool { task ->
         Thread(task, "nsdl-http").apply { isDaemon = true }
     }
+    private val presence = PresenceRegistry()
 
     val port: Int get() = server.address.port
 
@@ -39,6 +47,10 @@ class HttpSimulationServer(
         server.executor = executor
         server.createContext("/api/command", ::handleCommand)
         server.createContext("/api/events", ::handleEvents)
+        server.createContext("/api/move", ::handleMove)
+        server.createContext("/api/session/snapshot", ::handleSessionSnapshot)
+        server.createContext("/api/session/stream", ::handleSessionStream)
+        server.createContext("/api/presence", ::handlePresence)
         server.createContext("/", ::handleStatic)
     }
 
@@ -117,6 +129,159 @@ class HttpSimulationServer(
             }
         }
     }
+
+    /**
+     * `POST /api/move`: moves a node's shared canvas position. Body: `{id, x, y, clientId, requestId?,
+     * baseRevision?}`. Positions are UI-only session state -- see [com.a2z.nsdl.runtime.CollabSession] --
+     * so this never touches `/api/command`'s Command/CommandResult vocabulary except by reusing
+     * [ErrorCode.IDEMPOTENCY_CONFLICT] and [ErrorCode.INVALID_REQUEST] for a consistent wire vocabulary.
+     * Response: `{"type":"applied","revision":N}` or `{"type":"conflict","revision":N,"current":{x,y}|null}`.
+     */
+    private fun handleMove(exchange: HttpExchange) {
+        if (exchange.requestMethod != "POST") return exchange.respond(405, "text/plain", "method not allowed")
+        val bytes = exchange.requestBody.readNBytes(maxRequestBytes + 1)
+        if (bytes.size > maxRequestBytes) return exchange.respond(413, "text/plain", "request too large")
+        val body = try {
+            @Suppress("UNCHECKED_CAST")
+            Json.parse(bytes.toString(StandardCharsets.UTF_8)) as? Map<String, Any?> ?: emptyMap()
+        } catch (e: JsonParseException) {
+            return exchange.respondError(ErrorCode.INVALID_REQUEST, "malformed JSON: ${e.message}")
+        }
+        val id = body["id"] as? String
+        val x = (body["x"] as? Number)?.toDouble()
+        val y = (body["y"] as? Number)?.toDouble()
+        val clientId = body["clientId"] as? String
+        if (id == null || x == null || y == null || clientId == null) {
+            return exchange.respondError(ErrorCode.INVALID_REQUEST, "id, x, y and clientId are required")
+        }
+        val requestId = body["requestId"] as? String
+        val baseRevision = (body["baseRevision"] as? Number)?.toLong()
+
+        val response = when (val outcome = runtime.moveNode(MoveRequest(clientId, id, Position(x, y), requestId, baseRevision))) {
+            is MoveOutcome.Applied -> mapOf("type" to "applied", "revision" to outcome.patch.revision)
+            is MoveOutcome.Conflict -> mapOf(
+                "type" to "conflict", "revision" to outcome.currentRevision,
+                "current" to outcome.current?.let { mapOf("x" to it.x, "y" to it.y) },
+            )
+            MoveOutcome.IdempotencyConflict -> return exchange.respondError(
+                ErrorCode.IDEMPOTENCY_CONFLICT, "request id '$requestId' was already used with a different move",
+            )
+        }
+        exchange.respond(200, "application/json", Json.write(response))
+    }
+
+    /** `GET /api/session/snapshot`: the current full set of node positions, for a client's initial load
+     * or after its stream cursor expired. Response: `{"revision":N,"positions":{id:{x,y}}}`. */
+    private fun handleSessionSnapshot(exchange: HttpExchange) {
+        if (exchange.requestMethod != "GET") return exchange.respond(405, "text/plain", "method not allowed")
+        val snapshot = runtime.sessionSnapshot()
+        exchange.respond(
+            200, "application/json",
+            Json.write(mapOf("revision" to snapshot.revision, "positions" to snapshot.changed.mapValues { (_, p) -> mapOf("x" to p.x, "y" to p.y) })),
+        )
+    }
+
+    /** `GET /api/session/stream?from=N` (SSE): streams position patches after revision [N], the
+     * reconnect-from-revision path for the collaborative session (mirrors `/api/events`). */
+    private fun handleSessionStream(exchange: HttpExchange) {
+        if (exchange.requestMethod != "GET") return exchange.respond(405, "text/plain", "method not allowed")
+        val from = query(exchange)["from"]?.toLongOrNull() ?: 0L
+        when (val subscribed = runtime.subscribeSession(from, capacity = 1_000)) {
+            SessionSubscribeResult.CursorExpired -> exchange.respondError(
+                ErrorCode.CURSOR_EXPIRED, "cursor is older than retained session history", status = 409,
+            )
+            is SessionSubscribeResult.Subscribed -> {
+                exchange.responseHeaders.set("Content-Type", "text/event-stream")
+                exchange.responseHeaders.set("Cache-Control", "no-cache")
+                exchange.responseHeaders.set("X-Accel-Buffering", "no")
+                exchange.sendResponseHeaders(200, 0)
+                val output = exchange.responseBody.bufferedWriter(StandardCharsets.UTF_8)
+                try {
+                    output.write(": connected\n\n")
+                    output.flush()
+                    while (!Thread.currentThread().isInterrupted && !subscribed.subscription.isClosed) {
+                        when (val delivery = subscribed.subscription.poll()) {
+                            is SessionDelivery.Patch -> output.write(
+                                "data: ${
+                                    Json.write(
+                                        mapOf(
+                                            "type" to "patch", "revision" to delivery.patch.revision,
+                                            "changed" to delivery.patch.changed.mapValues { (_, p) -> mapOf("x" to p.x, "y" to p.y) },
+                                            "removed" to delivery.patch.removed.toList(),
+                                        ),
+                                    )
+                                }\n\n",
+                            )
+                            is SessionDelivery.Gap -> {
+                                output.write("data: ${Json.write(mapOf("type" to "gap", "resync" to true))}\n\n")
+                                output.flush()
+                                break
+                            }
+                            null -> {
+                                Thread.sleep(10)
+                                continue
+                            }
+                        }
+                        output.flush()
+                    }
+                } catch (_: IOException) {
+                    // Browser disconnected.
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                } finally {
+                    subscribed.subscription.close()
+                    exchange.close()
+                }
+            }
+        }
+    }
+
+    /**
+     * `GET /api/presence?clientId=ID` (SSE): a lightweight, non-deterministic side channel reporting
+     * which clients currently have a connection open. This never touches [SimulationRuntime] or the
+     * event hub -- presence is connection liveness, not simulation state (see [PresenceRegistry]).
+     * Pushes `{"type":"roster","clients":[...]}` on connect and whenever the roster changes.
+     */
+    private fun handlePresence(exchange: HttpExchange) {
+        if (exchange.requestMethod != "GET") return exchange.respond(405, "text/plain", "method not allowed")
+        val clientId = query(exchange)["clientId"]
+        if (clientId.isNullOrBlank()) return exchange.respond(400, "text/plain", "clientId is required")
+
+        presence.join(clientId)
+        val latest = java.util.concurrent.atomic.AtomicReference(presence.current())
+        val unsubscribe = presence.onChange { latest.set(it) }
+        exchange.responseHeaders.set("Content-Type", "text/event-stream")
+        exchange.responseHeaders.set("Cache-Control", "no-cache")
+        exchange.responseHeaders.set("X-Accel-Buffering", "no")
+        exchange.sendResponseHeaders(200, 0)
+        val output = exchange.responseBody.bufferedWriter(StandardCharsets.UTF_8)
+        var lastSent: Set<String>? = null
+        try {
+            output.write(": connected\n\n")
+            output.flush()
+            while (!Thread.currentThread().isInterrupted) {
+                val roster = latest.get()
+                if (roster != lastSent) {
+                    output.write("data: ${Json.write(mapOf("type" to "roster", "clients" to roster.sorted()))}\n\n")
+                    output.flush()
+                    lastSent = roster
+                } else {
+                    Thread.sleep(50)
+                }
+            }
+        } catch (_: IOException) {
+            // Browser disconnected.
+        } catch (_: InterruptedException) {
+            Thread.currentThread().interrupt()
+        } finally {
+            unsubscribe()
+            presence.leave(clientId)
+            exchange.close()
+        }
+    }
+
+    private fun HttpExchange.respondError(code: ErrorCode, message: String, status: Int = 200) =
+        respond(status, "application/json", Json.write(mapOf("type" to "error", "error" to mapOf("code" to code.name, "message" to message))))
 
     private fun handleStatic(exchange: HttpExchange) {
         if (exchange.requestMethod != "GET") return exchange.respond(405, "text/plain", "method not allowed")

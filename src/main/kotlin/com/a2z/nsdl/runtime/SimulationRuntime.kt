@@ -87,11 +87,12 @@ class SimulationRuntime(
     limits: Limits = Limits(),
     randomSeed: Long = 0L,
     idempotencyCapacity: Int = 1000,
+    collabRetention: Int = CollabSession.DEFAULT_RETENTION,
 ) {
     private val service = SimulationService(scheduler, eventHub, registry, limits, randomSeed)
     private val idempotency = IdempotencyCache(idempotencyCapacity)
     private val journal = InputJournal()
-    private val collabSession = CollabSession()
+    private val collabSession = CollabSession(collabRetention)
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, THREAD_NAME).apply { isDaemon = true } }
 
     fun submit(request: Request): RuntimeResult = executor.submit(Callable { runOnRuntimeThread(request) }).get()
