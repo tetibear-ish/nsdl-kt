@@ -27,10 +27,26 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
           {lease.remainingMs !== null && ` · ${formatVirtualTime(lease.remainingMs)}`}
         </small>
       )}
-      {leases.length > 0 && (
+      {data.dhcpServer && (
         <table className="node-dhcp-leases nodrag nopan">
+          <colgroup>
+            <col className="lease-address" />
+            <col className="lease-mac" />
+            <col className="lease-remaining" />
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Address</th>
+              <th scope="col">MAC address</th>
+              <th scope="col">Lease remaining</th>
+            </tr>
+          </thead>
           <tbody>
-            {leases.map((row) => (
+            {leases.length === 0 ? (
+              <tr>
+                <td className="lease-waiting" colSpan={3}>Waiting for DHCP Broadcast...</td>
+              </tr>
+            ) : leases.map((row) => (
               <tr key={row.mac}>
                 <td>{row.address}</td>
                 <td>{row.mac}</td>

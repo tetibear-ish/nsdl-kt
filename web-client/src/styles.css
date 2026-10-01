@@ -62,8 +62,15 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .network-node small { margin-top: 8px; color: #718ba2; font: 700 10px ui-monospace, monospace; }
 .network-node .node-power { margin-top: 10px; padding: 5px 8px; font-size: 10px; }
 .network-node .node-dhcp { display: block; color: #718ba2; font-weight: 400; letter-spacing: normal; }
-.network-node .node-dhcp-leases { margin-top: 8px; width: 100%; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
-.network-node .node-dhcp-leases td { padding: 1px 4px 1px 0; border-top: 1px solid #1c3349; white-space: nowrap; }
+.network-node .node-dhcp-leases { margin-top: 8px; width: 286px; table-layout: fixed; border-collapse: collapse; font: 10px ui-monospace, monospace; color: #718ba2; text-align: left; }
+.network-node .node-dhcp-leases .lease-address { width: 78px; }
+.network-node .node-dhcp-leases .lease-mac { width: 112px; }
+.network-node .node-dhcp-leases .lease-remaining { width: 96px; }
+.network-node .node-dhcp-leases th,
+.network-node .node-dhcp-leases td { padding: 2px 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.network-node .node-dhcp-leases th { color: #8da5ba; font-weight: 700; border-bottom: 1px solid #29445f; }
+.network-node .node-dhcp-leases td { border-top: 1px solid #1c3349; }
+.network-node .node-dhcp-leases .lease-waiting { height: 22px; text-align: center; font-style: italic; }
 .network-node.power-on { border-color: #5de4d1; box-shadow: 0 0 24px rgba(93,228,209,.13); }
 .network-node.power-booting { border-color: #ffc96b; }
 .node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }
