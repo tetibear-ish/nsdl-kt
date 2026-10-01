@@ -49,6 +49,22 @@ describe("projectTopology", () => {
     ]);
   });
 
+  it("temporarily allows the dragged cable endpoint to reconnect to its original occupied port", () => {
+    const snapshots: ObjectSnapshot[] = [
+      { id: "a", type: "printer", kind: "DEVICE", state: {}, relations: { interfaces: ["a.eth0"] } },
+      { id: "b", type: "ethernet-switch", kind: "DEVICE", state: {}, relations: { interfaces: ["b.port1"] } },
+      { id: "cable1", type: "cat5-cable", kind: "CABLE", state: { connected: true }, relations: { endpoints: ["a.eth0", "b.port1"] } },
+    ];
+
+    const projected = projectTopology(snapshots, {}, undefined, {}, {}, undefined, "b.port1");
+
+    expect(projected.nodes.find((node) => node.id === "b")?.data.ports[0]).toMatchObject({
+      occupied: true,
+      reconnectable: true,
+    });
+    expect(projected.nodes.find((node) => node.id === "a")?.data.ports[0].reconnectable).toBe(false);
+  });
+
   it("colors operational links green and down links orange", () => {
     const devices: ObjectSnapshot[] = [
       { id: "a", type: "printer", kind: "DEVICE", state: {}, relations: {} },

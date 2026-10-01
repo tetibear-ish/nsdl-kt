@@ -74,7 +74,7 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
           <Handle
             className={classNames.join(" ")}
             id={port.id}
-            isConnectable={!port.occupied}
+            isConnectable={!port.occupied || port.reconnectable}
             key={port.id}
             onContextMenu={(event) => {
               event.preventDefault();

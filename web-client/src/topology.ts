@@ -6,6 +6,7 @@ export type PortView = {
   name: string;
   occupied: boolean;
   cableId?: string;
+  reconnectable: boolean;
 };
 
 export type NetworkNodeData = Record<string, unknown> & {
@@ -35,6 +36,7 @@ export function projectTopology(
   dhcpLeases: Record<string, ObjectSnapshot> = {},
   dhcpServers: Record<string, ObjectSnapshot> = {},
   onCableDelete?: (cableId: string) => void,
+  reconnectingPortId?: string | null,
 ): TopologyProjection {
   const cables = snapshots.filter((snapshot) => snapshot.kind === "CABLE");
   const occupied = new Set(cables.flatMap((cable) => cable.relations.endpoints ?? []));
@@ -60,6 +62,7 @@ export function projectTopology(
         name: id.slice(snapshot.id.length + 1),
         occupied: occupied.has(id),
         cableId: cableByEndpoint.get(id),
+        reconnectable: id === reconnectingPortId,
       })),
     },
   }));

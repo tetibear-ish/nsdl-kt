@@ -59,6 +59,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
   const pinnedInspection = useRef<{ kind: "node" | "edge"; id: string } | null>(null);
+  const reconnectingPort = useRef<string | null>(null);
   const positions = useEditorStore((state) => state.positions);
   const setPosition = useEditorStore((state) => state.setPosition);
   const records = useEditorStore((state) => state.records);
@@ -128,6 +129,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       dhcpLeases,
       dhcpServers,
       (cableId) => { void deleteCableAtPort(cableId); },
+      reconnectingPort.current,
     );
     const nextPower = Object.fromEntries(projected.nodes.map((node) => [node.id, node.data.snapshot.state.power]));
     const transitions = projected.nodes.flatMap((node) => {
@@ -464,8 +466,24 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onReconnect={(edge, connection) => { void reconnectCable(edge, connection); }}
-          onReconnectStart={() => { reconnectCompleted.current = false; }}
+          onReconnectStart={(_event, edge, handleType) => {
+            reconnectCompleted.current = false;
+            // React Flow reports the fixed opposite handle here, so the endpoint being moved is the other one.
+            reconnectingPort.current = handleType === "target" ? edge.sourceHandle ?? null : edge.targetHandle ?? null;
+            setNodes((current) => current.map((node) => ({
+              ...node,
+              data: {
+                ...node.data,
+                ports: node.data.ports.map((port) => ({ ...port, reconnectable: port.id === reconnectingPort.current })),
+              },
+            })));
+          }}
           onReconnectEnd={(_event, edge) => {
+            reconnectingPort.current = null;
+            setNodes((current) => current.map((node) => ({
+              ...node,
+              data: { ...node.data, ports: node.data.ports.map((port) => ({ ...port, reconnectable: false })) },
+            })));
             if (!reconnectCompleted.current) void disconnect(edge);
           }}
           onInit={(instance) => { flow.current = instance; }}
