@@ -1,8 +1,9 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { CSSProperties } from "react";
+import { Fragment, type CSSProperties } from "react";
 import { useActivityStore } from "./activityStore";
 import { formatVirtualTime } from "./clock";
 import { useClockTimeStore } from "./clockStore";
+import { useConnectionDragStore } from "./connectionDragStore";
 import { parseDhcpLease } from "./dhcpLease";
 import { parseDhcpServerLeases } from "./dhcpServerLeases";
 import type { NetworkNode as NetworkNodeType } from "./topology";
@@ -11,6 +12,7 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
   const power = String(data.snapshot.state.power ?? "OFF");
   const split = Math.ceil(data.ports.length / 2);
   const pulses = useActivityStore((state) => state.pulses);
+  const dragGuide = useConnectionDragStore((state) => state.guide);
   const nowMs = useClockTimeStore((state) => state.nowMs);
   const lease = data.dhcpLease ? parseDhcpLease(data.dhcpLease, nowMs) : null;
   const leases = data.dhcpServer ? parseDhcpServerLeases(data.dhcpServer, nowMs) : [];
@@ -67,28 +69,37 @@ export function NetworkNode({ data }: NodeProps<NetworkNodeType>) {
         const sideIndex = left ? index : index - split;
         const sideCount = left ? split : data.ports.length - split;
         const pulse = pulses[port.id];
+        const guide = dragGuide[port.id];
         const classNames = ["port"];
         if (port.occupied) classNames.push("occupied");
+        if (!port.enabled) classNames.push("disabled");
+        if (guide) classNames.push(`guide-${guide}`);
         if (pulse) classNames.push(`pulse-${pulse.kind}`);
+        const top = `${((sideIndex + 1) / (sideCount + 1)) * 100}%`;
         return (
-          <Handle
-            className={classNames.join(" ")}
-            id={port.id}
-            isConnectable={!port.occupied || port.reconnectable}
-            key={port.id}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              if (port.cableId) data.onCableDelete?.(port.cableId);
-            }}
-            position={left ? Position.Left : Position.Right}
-            type="source"
-            style={{
-              top: `${((sideIndex + 1) / (sideCount + 1)) * 100}%`,
-              ...(pulse ? { "--pulse-strength": Math.min(pulse.count, 6), animationDuration: `${Math.max(80, 400 / pulse.count)}ms` } : {}),
-            } as CSSProperties}
-            title={`${port.name}${port.occupied ? " (connected)" : ""}`}
-          />
+          <Fragment key={port.id}>
+            <Handle
+              className={classNames.join(" ")}
+              id={port.id}
+              isConnectable={!port.occupied || port.reconnectable}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                if (port.cableId) data.onCableDelete?.(port.cableId);
+              }}
+              position={left ? Position.Left : Position.Right}
+              type="source"
+              style={{
+                top,
+                ...(pulse ? { "--pulse-strength": Math.min(pulse.count, 6), animationDuration: `${Math.max(80, 400 / pulse.count)}ms` } : {}),
+              } as CSSProperties}
+              title={`${port.name}${port.occupied ? " (connected)" : ""}${port.enabled ? "" : " (disabled)"}`}
+            />
+            <span
+              className={`port-label ${left ? "port-label-left" : "port-label-right"}`}
+              style={{ top } as CSSProperties}
+            >{port.name}</span>
+          </Fragment>
         );
       })}
     </article>

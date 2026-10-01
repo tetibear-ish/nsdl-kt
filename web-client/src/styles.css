@@ -85,13 +85,22 @@ button.secondary.active { border-color: #5de4d1; background: #123b3d; color: #d4
 .node-status { position: absolute; top: 10px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: #587087; }
 .power-on .node-status { background: #5de4d1; box-shadow: 0 0 8px #5de4d1; }
 .power-booting .node-status { background: #ffc96b; }
-.react-flow__handle.port { width: 12px; height: 12px; border: 2px solid #9bb1c5; background: #10253a; }
+.react-flow__handle.port { width: 12px; height: 12px; border: 2px solid #9bb1c5; background: #10253a; transition: box-shadow 120ms ease, border-color 120ms ease, opacity 120ms ease; }
 .react-flow__handle.port.occupied { border-color: #5de4d1; background: #2a706b; }
+.react-flow__handle.port.disabled { opacity: .45; }
+.react-flow__handle.port.guide-compatible { border-color: #4bd18b; box-shadow: 0 0 0 4px rgba(75, 209, 139, .28); }
+.react-flow__handle.port.guide-incompatible { border-color: #ff6b6b; opacity: .5; }
+.react-flow__handle.port.guide-occupied { opacity: .35; }
 .react-flow__handle.port[class*="pulse-"] { animation: port-flash 400ms ease-in-out infinite alternate; }
 .react-flow__handle.port.pulse-tx { --pulse-color: #6bb8ff; border-color: var(--pulse-color); background: var(--pulse-color); }
 .react-flow__handle.port.pulse-rx { --pulse-color: #7de47f; border-color: var(--pulse-color); background: var(--pulse-color); }
 .react-flow__handle.port.pulse-drop { --pulse-color: #ff6b6b; border-color: var(--pulse-color); background: var(--pulse-color); }
 @keyframes port-flash { from { box-shadow: 0 0 3px var(--pulse-color); opacity: .45; } to { box-shadow: 0 0 calc(5px + var(--pulse-strength) * 2px) 2px var(--pulse-color); opacity: 1; } }
+.port-label { position: absolute; z-index: 1; transform: translateY(-50%); color: #5b7a94; font: 9px ui-monospace, monospace; white-space: nowrap; pointer-events: none; }
+.port-label-left { right: calc(100% + 6px); }
+.port-label-right { left: calc(100% + 6px); }
+.network-node.power-off .port-label { color: #44586c; }
+.connection-rejection { position: fixed; z-index: 30; max-width: 240px; transform: translate(12px, -50%); border: 1px solid #a23a3a; border-radius: 10px; padding: 9px 12px; background: #2a1414; color: #ffc1bd; font-size: 12px; line-height: 1.4; box-shadow: 0 12px 36px #000a; }
 .react-flow__edge.topology-edge .react-flow__edge-path { stroke-width: 3; }
 .react-flow__edge.topology-edge.link-unused .react-flow__edge-path { stroke: #66717c; }
 .react-flow__edge.topology-edge.link-down .react-flow__edge-path { stroke: #e59a45; }
