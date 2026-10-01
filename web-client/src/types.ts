@@ -38,6 +38,9 @@ export type CommandFailure = {
 
 export type CommandResult<T = unknown> = CommandSuccess<T> | CommandFailure;
 
+/** A node's shared canvas position -- UI-only session state synchronized across clients (see transport.ts). */
+export type Position = { x: number; y: number };
+
 export type SimulationEvent = {
   type: "event" | "gap";
   seq?: number;

@@ -16,6 +16,16 @@ import java.util.concurrent.Executors
 
 data class Request(val command: Command, val requestId: String? = null)
 
+/** A client's request to move a node's canvas position -- see [CollabSession] for the semantics of
+ * [baseRevision] and [requestId]. */
+data class MoveRequest(
+    val clientId: String,
+    val id: String,
+    val position: Position,
+    val requestId: String? = null,
+    val baseRevision: Long? = null,
+)
+
 /** [revision] is the event hub's lastSeq at the moment [result] was produced: subscribing from it never gaps. */
 data class RuntimeResult(val result: CommandResult, val revision: Long)
 
@@ -78,10 +88,12 @@ class SimulationRuntime(
     limits: Limits = Limits(),
     randomSeed: Long = 0L,
     idempotencyCapacity: Int = 1000,
+    collabRetention: Int = CollabSession.DEFAULT_RETENTION,
 ) {
     private val service = SimulationService(scheduler, eventHub, registry, limits, randomSeed)
     private val idempotency = IdempotencyCache(idempotencyCapacity)
     private val journal = InputJournal()
+    private val collabSession = CollabSession(collabRetention)
     private val executor = Executors.newSingleThreadExecutor { r -> Thread(r, THREAD_NAME).apply { isDaemon = true } }
 
     fun submit(request: Request): RuntimeResult = executor.submit(Callable { runOnRuntimeThread(request) }).get()
@@ -92,6 +104,17 @@ class SimulationRuntime(
     fun journalSnapshot(): List<Command> = executor.submit(Callable { journal.snapshot() }).get()
 
     fun currentRevision(): Long = executor.submit(Callable { eventHub.lastSeq }).get()
+
+    /** Moves a node's shared canvas position. Confined to the runtime thread like everything else here,
+     * so its revision bookkeeping in [CollabSession] never races a concurrent command or another move. */
+    fun moveNode(request: MoveRequest): MoveOutcome = executor.submit(
+        Callable { collabSession.move(request.clientId, request.requestId, request.id, request.position, request.baseRevision) },
+    ).get()
+
+    fun sessionSnapshot(): SessionPatch = executor.submit(Callable { collabSession.snapshot() }).get()
+
+    fun subscribeSession(from: Long = collabSession.revision, capacity: Int): SessionSubscribeResult =
+        executor.submit(Callable { collabSession.subscribe(from, capacity) }).get()
 
     fun close() {
         executor.shutdown()
@@ -111,7 +134,10 @@ class SimulationRuntime(
         }
 
         val result = service.handle(request.command)
-        if (result is CommandResult.Ok && InputJournal.isMutating(request.command)) journal.record(request.command)
+        if (result is CommandResult.Ok) {
+            if (InputJournal.isMutating(request.command)) journal.record(request.command)
+            if (request.command is Command.Delete) removeDeletedPositions(result.data)
+        }
         val wrapped = RuntimeResult(result, eventHub.lastSeq)
         if (requestId != null) idempotency.record(requestId, request.command, wrapped)
         wrapped
@@ -120,6 +146,13 @@ class SimulationRuntime(
             CommandResult.Rejected(CommandError(ErrorCode.INTERNAL, e.message ?: e::class.simpleName ?: "internal error")),
             eventHub.lastSeq,
         )
+    }
+
+    /** A Delete also removes every id it cascaded away (e.g. attached cables) from the shared session,
+     * so a deleted node's position stops being broadcast and clients drop it from the canvas. */
+    private fun removeDeletedPositions(data: Any?) {
+        val deletedIds = (data as? Map<*, *>)?.get("deleted") as? List<*> ?: return
+        deletedIds.filterIsInstance<String>().forEach { collabSession.remove(it) }
     }
 
     companion object {

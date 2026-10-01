@@ -42,7 +42,7 @@ import {
 import { useEditorStore } from "./store";
 import { projectTopology, type NetworkNode as NetworkNodeType } from "./topology";
 import { selectTransport, type SimulationTransport } from "./transport";
-import type { ObjectSnapshot, ObjectTypeSchema } from "./types";
+import type { ObjectSnapshot, ObjectTypeSchema, Position } from "./types";
 import { UndoStack } from "./undoStack";
 
 const UNDO_CAPACITY = 50;
@@ -79,8 +79,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   // Screen position of the most recent connect attempt, for placing the rejection banner.
   const lastConnectPoint = useRef({ x: 120, y: 120 });
   const rejectionTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const positions = useEditorStore((state) => state.positions);
-  const setPosition = useEditorStore((state) => state.setPosition);
   const records = useEditorStore((state) => state.records);
   const setRecord = useEditorStore((state) => state.setRecord);
   const removeRecord = useEditorStore((state) => state.removeRecord);
@@ -96,6 +94,11 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     () => usePacketInspectorStore.getState().setPaused(!usePacketInspectorStore.getState().paused),
     [],
   );
+  // Node positions are server-owned collaborative session state (see transport.ts), not local-only:
+  // a ref keeps refresh()/handlers reading the latest value without retriggering on every remote move.
+  const [positions, setPositions] = useState<Record<string, Position>>({});
+  const positionsRef = useRef<Record<string, Position>>({});
+  const [presence, setPresence] = useState<string[]>([]);
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -124,6 +127,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           },
         });
       }
+      transport.removePosition(cableId);
       setLog((entries) => [...entries.slice(-99), `deleted ${cableId}`]);
     } else {
       setStatus(`${result.error.code}: ${result.error.message}`);
@@ -178,7 +182,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     ]);
     const projected = projectTopology(
       result.data,
-      useEditorStore.getState().positions,
+      positionsRef.current,
       (snapshot) => { void togglePower(snapshot); },
       dhcpLeases,
       dhcpServers,
@@ -251,6 +255,17 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const apply = (state: ClockState) => { setClock(state); useClockTimeStore.getState().setNowMs(state.nowMs); };
     apply(transport.getClock());
     return transport.onClockChange(apply);
+  }, [transport]);
+
+  useEffect(() => {
+    const apply = (next: Record<string, Position>) => { positionsRef.current = next; setPositions(next); };
+    apply(transport.getPositions());
+    return transport.onPositionsChange(apply);
+  }, [transport]);
+
+  useEffect(() => {
+    setPresence(transport.getPresence());
+    return transport.onPresenceChange(setPresence);
   }, [transport]);
 
   const toggleClock = useCallback(() => {
@@ -370,19 +385,20 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const result = await transport.execute("create", { id, type: type.name, props: cleaned });
     if (!result.ok) return `${result.error.code}: ${result.error.message}`;
     setLog((entries) => [...entries.slice(-99), `created ${type.name} ${id}`]);
-    setPosition(id, placement.current);
+    transport.movePosition(id, placement.current);
     setRecord(id, { type: type.name, props: cleaned });
     undoStack.current.push({
       description: `create ${id}`,
       undo: async () => {
         await transport.execute("delete", { id });
         removeRecord(id);
+        transport.removePosition(id);
         await refresh();
       },
     });
     await refresh();
     return null;
-  }, [refresh, removeRecord, setPosition, setRecord, transport]);
+  }, [refresh, removeRecord, setRecord, transport]);
 
   const configureObject = useCallback(async (snapshot: ObjectSnapshot, props: Record<string, string>) => {
     const result = await transport.execute("configure", { id: snapshot.id, props });
@@ -424,7 +440,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         await refresh();
       },
     });
-    removed.forEach((entry) => removeRecord(entry.id));
+    removed.forEach((entry) => { removeRecord(entry.id); transport.removePosition(entry.id); });
     pinnedInspection.current = null;
     setInspected([]);
     setLog((entries) => [...entries.slice(-99), `deleted ${result.data.deleted.join(", ")}`]);
@@ -465,10 +481,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       return;
     }
     document.objects.forEach((object) => setRecord(object.id, { type: object.type, props: object.props }));
-    Object.entries(document.positions).forEach(([id, position]) => setPosition(id, position));
+    Object.entries(document.positions).forEach(([id, position]) => transport.movePosition(id, position));
     setLog((entries) => [...entries.slice(-99), `${sourceLabel}: applied ${document.objects.length} objects, ${document.connections.length} cables`]);
     await refresh();
-  }, [refresh, setPosition, setRecord, transport]);
+  }, [refresh, setRecord, transport]);
 
   const loadLab = useCallback(() => {
     void applyLoadedDocument(loadLabFromLocalStorage(), "loaded saved lab");
@@ -505,6 +521,9 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <div><span>NSDL</span><strong>Topology Lab</strong><HistoryDropdown /></div>
         <div className="toolbar-actions">
           <output>{status}</output>
+          <span className="presence" title={presence.join(", ")} aria-label="Connected clients">
+            {presence.length} online
+          </span>
           <div className="clock-controls" aria-label="Simulation clock">
             <span className="clock-time">{formatVirtualTime(clock.nowMs)}</span>
             <span className="clock-drive-mode">{transport.driveMode === "browser" ? "browser-driven" : "server-driven"}</span>
@@ -590,10 +609,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onNodeDragStop={(_event, node) => {
-            const from = positions[node.id];
-            setPosition(node.id, node.position);
+            const from = positionsRef.current[node.id];
+            transport.movePosition(node.id, node.position);
             if (from && (from.x !== node.position.x || from.y !== node.position.y)) {
-              undoStack.current.push({ description: `move ${node.id}`, undo: () => setPosition(node.id, from) });
+              undoStack.current.push({ description: `move ${node.id}`, undo: () => transport.movePosition(node.id, from) });
             }
           }}
           onNodesChange={onNodesChange}

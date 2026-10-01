@@ -9,6 +9,7 @@ button, input, select { font: inherit; }
 .toolbar strong { font-size: 20px; }
 .toolbar-actions { display: flex; align-items: center; gap: 18px; }
 .toolbar output { color: #829ab1; font: 12px ui-monospace, monospace; }
+.toolbar .presence { color: #5de4d1; font: 700 11px ui-monospace, monospace; letter-spacing: .08em; }
 button { border: 1px solid #3b8d88; border-radius: 9px; padding: 9px 15px; background: #123b3d; color: #d4fff9; cursor: pointer; font-weight: 700; }
 button:hover { background: #185052; }
 button.secondary { border-color: #40566c; background: transparent; color: #a9bdd0; }
