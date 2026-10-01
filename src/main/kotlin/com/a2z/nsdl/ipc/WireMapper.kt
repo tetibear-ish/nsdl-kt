@@ -22,5 +22,6 @@ object WireMapper {
         is EventPayload.NetworkConfigChanged -> mapOf("config" to payload.config?.toState())
         is EventPayload.ConfigurationChanged -> mapOf("properties" to payload.properties)
         is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
+        is EventPayload.ActionPerformed -> mapOf("action" to payload.action, "accepted" to payload.accepted, "detail" to payload.detail)
     }
 }

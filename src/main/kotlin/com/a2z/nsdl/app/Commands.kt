@@ -21,6 +21,8 @@ sealed interface Command {
     data class Configure(val id: String, val props: Map<String, Any?>) : Command
     data class PowerOn(val id: String) : Command
     data class PowerOff(val id: String) : Command
+    /** Dispatches a named, scriptable action to the [com.a2z.nsdl.model.Actionable] component at [id]. */
+    data class Invoke(val id: String, val action: String, val params: Map<String, Any?> = emptyMap()) : Command
     data class Advance(val duration: Duration) : Command
     data object ListTypes : Command
     data object ListObjects : Command

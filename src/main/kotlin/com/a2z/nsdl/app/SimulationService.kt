@@ -55,6 +55,7 @@ class SimulationService(
         is Command.Configure -> handleConfigure(command)
         is Command.PowerOn -> handlePower(command.id, on = true)
         is Command.PowerOff -> handlePower(command.id, on = false)
+        is Command.Invoke -> handleInvoke(command)
         is Command.Advance -> handleAdvance(command)
         Command.ListTypes -> CommandResult.Ok(registry.list())
         Command.ListObjects -> CommandResult.Ok(objects.values.map { it.obj.root.snapshot() })
@@ -241,6 +242,29 @@ class SimulationService(
         val power = registered.obj.power ?: return rejected(ErrorCode.NOT_POWERABLE, "'$rawId' cannot be powered")
         val change = if (on) power.powerOn() else power.powerOff()
         return CommandResult.Ok(changed = change == PowerChange.CHANGED)
+    }
+
+    /**
+     * Dispatches a scriptable action to the [com.a2z.nsdl.model.Actionable] component at [cmd.id] (the
+     * object's root or one of its components, e.g. "computer1.print-client"). The target's own
+     * [com.a2z.nsdl.model.ActionOutcome.accepted] becomes [CommandResult.Ok.changed]: a domain-level
+     * rejection (e.g. link unavailable) is not a protocol error, the same way Configure's no-op isn't.
+     */
+    private fun handleInvoke(cmd: Command.Invoke): CommandResult {
+        if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
+        val id = ObjectId(cmd.id)
+        val target = objects[id]?.obj?.root
+            ?: objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
+            ?: return unknownObject(cmd.id)
+        val actionable = target as? com.a2z.nsdl.model.Actionable
+            ?: return rejected(ErrorCode.NOT_ACTIONABLE, "'${cmd.id}' does not support actions")
+
+        val outcome = actionable.perform(cmd.action, cmd.params)
+        events.emit(id, EventPayload.ActionPerformed(cmd.action, outcome.accepted, outcome.detail))
+        return CommandResult.Ok(
+            data = mapOf("accepted" to outcome.accepted, "detail" to outcome.detail, "data" to outcome.data),
+            changed = outcome.accepted,
+        )
     }
 
     private fun handleAdvance(cmd: Command.Advance): CommandResult {

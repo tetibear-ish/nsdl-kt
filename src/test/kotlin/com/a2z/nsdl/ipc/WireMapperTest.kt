@@ -143,4 +143,12 @@ class WireMapperTest {
 
         assertEquals(mapOf("record" to record.toState()), WireMapper.toData(EventPayload.DecisionRecorded(record)))
     }
+
+    @Test
+    fun `maps ActionPerformed`() {
+        assertEquals(
+            mapOf("action" to "submit", "accepted" to true, "detail" to "queued"),
+            WireMapper.toData(EventPayload.ActionPerformed("submit", true, "queued")),
+        )
+    }
 }
