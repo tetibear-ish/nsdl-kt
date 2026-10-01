@@ -64,6 +64,19 @@ describe("BrowserWasmTransport", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  it("forwards typed frame events embedded by the Wasm runtime", async () => {
+    const frameEvent = { type: "event" as const, seq: 8, source: "printer1.eth0", eventType: "FrameSent" };
+    const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 8, changed: true, data: null, events: [frameEvent] }));
+    const transport = new BrowserWasmTransport(Promise.resolve({ command }));
+    const listener = vi.fn();
+    const unsubscribe = transport.subscribe(7, listener);
+
+    await transport.execute("advance", { durationMs: 250 });
+    unsubscribe();
+
+    expect(listener).toHaveBeenCalledWith(frameEvent);
+  });
+
   it("advances virtual time while a browser subscription is active", async () => {
     vi.useFakeTimers();
     const command = vi.fn((_request: string) => JSON.stringify({ ok: true, revision: 0, changed: true, data: null }));

@@ -96,6 +96,13 @@ class EventHub(
         subscriptions.forEach { it.offer(record) }
     }
 
+    /** Returns retained records after [from], or null when that cursor has already expired. */
+    fun retainedAfter(from: Long): List<EventRecord>? {
+        val oldestRetained = ring.firstOrNull()?.seq
+        if (oldestRetained != null && from < oldestRetained - 1) return null
+        return ring.filter { it.seq > from }
+    }
+
     /** Replays retained events with seq > [from] matching [filter], then delivers new ones as they occur. */
     fun subscribe(filter: EventFilter, from: Long = lastSeq, capacity: Int): SubscribeResult {
         val oldestRetained = ring.firstOrNull()?.seq

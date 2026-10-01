@@ -11,9 +11,11 @@ import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
 import com.a2z.nsdl.events.EventHub
+import com.a2z.nsdl.events.EventRecord
 import com.a2z.nsdl.ipc.json.Json
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.ObjectSnapshot
+import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.sim.VirtualScheduler
@@ -31,6 +33,7 @@ class WebSimulation(seed: Long = 0L) {
     private var scheduler = VirtualScheduler()
     private var events = EventHub(now = { scheduler.now.millis })
     private var service = newService(seed)
+    private var deliveredSeq = 0L
 
     fun execute(line: String): String = try {
         val words = line.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
@@ -41,6 +44,7 @@ class WebSimulation(seed: Long = 0L) {
             scheduler = VirtualScheduler()
             events = EventHub(now = { scheduler.now.millis })
             service = newService(seed)
+            deliveredSeq = 0L
             return result(true, mapOf("seed" to seed))
         }
         encode(service.handle(parse(words)))
@@ -166,8 +170,33 @@ class WebSimulation(seed: Long = 0L) {
         )
     }
 
-    private fun result(changed: Boolean, data: Any?): String =
-        Json.write(mapOf("ok" to true, "changed" to changed, "revision" to events.lastSeq, "data" to data))
+    private fun result(changed: Boolean, data: Any?): String {
+        val pending = events.retainedAfter(deliveredSeq).orEmpty()
+        deliveredSeq = events.lastSeq
+        return Json.write(
+            mapOf(
+                "ok" to true,
+                "changed" to changed,
+                "revision" to events.lastSeq,
+                "data" to data,
+                "events" to pending.map(::eventToWire),
+            ),
+        )
+    }
+
+    private fun eventToWire(record: EventRecord): Map<String, Any?> = mapOf(
+        "type" to "event",
+        "seq" to record.seq,
+        "timeMs" to record.timeMs,
+        "source" to record.source.value,
+        "eventType" to record.type,
+        "data" to when (val payload = record.payload) {
+            is EventPayload.FrameDropped -> mapOf("reason" to payload.reason.name)
+            is EventPayload.LinkStateChanged -> mapOf("up" to payload.up)
+            is EventPayload.ProtocolStateChanged -> mapOf("protocol" to payload.protocol, "from" to payload.from, "to" to payload.to)
+            else -> emptyMap<String, Any?>()
+        },
+    )
 
     private fun toWire(value: Any?): Any? = when (value) {
         is ObjectSnapshot -> mapOf(

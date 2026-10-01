@@ -164,6 +164,7 @@ export class RemoteTransport implements SimulationTransport {
 const LEASE_KEY = "nsdl-clock-lease";
 
 export type WasmBridge = { command(request: string): string };
+type LocalWireResult<T> = CommandResult<T> & { events?: SimulationEvent[] };
 const MUTATING_OPERATIONS = new Set([
   "create", "applyTopology", "connect", "disconnect", "configure", "powerOn", "powerOff", "advance",
 ]);
@@ -187,12 +188,14 @@ export class BrowserWasmTransport implements SimulationTransport {
 
   async execute<T = unknown>(op: string, params: Record<string, unknown> = {}): Promise<CommandResult<T>> {
     const bridge = await this.ready;
-    const result = JSON.parse(bridge.command(JSON.stringify({ v: 1, op, params }))) as CommandResult<T>;
+    const result = JSON.parse(bridge.command(JSON.stringify({ v: 1, op, params }))) as LocalWireResult<T>;
     const previousRevision = this.lastRevision;
     if (result.ok) this.lastRevision = Math.max(this.lastRevision, result.revision);
     if (result.ok && op === "advance") this.clock.observeResult(result.data);
     const emittedEvents = result.ok && result.revision > previousRevision;
-    if (result.ok && result.changed && MUTATING_OPERATIONS.has(op) && (op !== "advance" || emittedEvents)) {
+    if (result.ok && result.events?.length) {
+      result.events.forEach((event) => this.listeners.forEach((listener) => listener(event)));
+    } else if (result.ok && result.changed && MUTATING_OPERATIONS.has(op) && (op !== "advance" || emittedEvents)) {
       this.listeners.forEach((listener) => listener({ type: "event" }));
     }
     return result;

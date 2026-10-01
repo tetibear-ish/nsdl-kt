@@ -69,6 +69,15 @@ class EventHubTest {
     }
 
     @Test
+    fun `retainedAfter returns events after a cursor without creating a subscription`() {
+        val hub = hub()
+        hub.emit(ObjectId("a"), PowerOnStarted(1))
+        hub.emit(ObjectId("a"), BootCompleted(1))
+
+        assertEquals(listOf(2L), hub.retainedAfter(1)?.map { it.seq })
+    }
+
+    @Test
     fun `subscribing with a cursor older than the retention ring is rejected as CursorExpired`() {
         val hub = hub(retention = 2)
         hub.emit(ObjectId("a"), PowerOnStarted(1)) // seq 1, evicted
