@@ -27,7 +27,7 @@ interface UdpTransport {
     val linkUp: Boolean
     fun addLinkListener(listener: (Boolean) -> Unit)
     /** Sends a datagram. Without ARP, unicast needs an explicit [dstMac]; broadcast uses ff:ff:ff:ff:ff:ff. */
-    fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress = MacAddress.BROADCAST): Boolean
+    fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress = MacAddress.BROADCAST, ttl: Int = 64): Boolean
     fun bind(port: Int, handler: UdpHandler)
     fun unbind(port: Int)
 }
@@ -83,8 +83,8 @@ class Ipv4Stack(
         events.emit(port.id, EventPayload.NetworkConfigChanged(config))
     }
 
-    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress): Boolean {
-        val packet = Ipv4Packet(config?.address ?: Ipv4Address.ANY, dst, UdpDatagram(srcPort, dstPort, payload))
+    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress, ttl: Int): Boolean {
+        val packet = Ipv4Packet(config?.address ?: Ipv4Address.ANY, dst, UdpDatagram(srcPort, dstPort, payload), ttl = ttl)
         return port.send(EthernetFrame(port.mac, dstMac, packet))
     }
 

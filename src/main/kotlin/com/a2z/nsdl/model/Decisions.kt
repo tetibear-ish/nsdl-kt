@@ -11,6 +11,7 @@ data class DecisionParents(
 
 enum class Responsibility(val wireName: String) {
     SWITCHING("switching"),
+    ROUTING("routing"),
 }
 
 enum class DecisionAction {
