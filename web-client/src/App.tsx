@@ -18,6 +18,7 @@ import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
 import { useClockTimeStore } from "./clockStore";
+import { moveCable, type CableEndpoints } from "./cableMove";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { ConfigureObjectForm } from "./ConfigureObjectForm";
@@ -232,6 +233,29 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     await refresh();
   }, [refresh, transport]);
 
+  const reconnectCompleted = useRef(false);
+  const reconnectCable = useCallback(async (edge: Edge, connection: Connection) => {
+    reconnectCompleted.current = true;
+    if (!edge.sourceHandle || !edge.targetHandle || !connection.sourceHandle || !connection.targetHandle) return;
+    const previous: CableEndpoints = { a: edge.sourceHandle, b: edge.targetHandle };
+    const next: CableEndpoints = { a: connection.sourceHandle, b: connection.targetHandle };
+    const result = await moveCable(transport.execute.bind(transport), edge.id, previous, next);
+    if (!result.ok) {
+      setStatus(result.message);
+      setLog((entries) => [...entries.slice(-99), `reconnect ${edge.id} failed: ${result.message}`]);
+    } else {
+      setLog((entries) => [...entries.slice(-99), `reconnected ${edge.id}: ${next.a} ↔ ${next.b}`]);
+      undoStack.current.push({
+        description: `reconnect ${edge.id}`,
+        undo: async () => {
+          await moveCable(transport.execute.bind(transport), edge.id, next, previous);
+          await refresh();
+        },
+      });
+    }
+    await refresh();
+  }, [refresh, transport]);
+
   const createObject = useCallback(async (type: ObjectTypeSchema, id: string, props: Record<string, string>) => {
     const cleaned = Object.fromEntries(Object.entries(props).filter(([, value]) => value !== ""));
     const result = await transport.execute("create", { id, type: type.name, props: cleaned });
@@ -430,7 +454,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           connectionMode={ConnectionMode.Loose}
           deleteKeyCode={null}
           edges={edges}
-          edgesReconnectable={false}
+          edgesReconnectable
           fitView
           nodes={nodes}
           nodeTypes={nodeTypes}
@@ -439,6 +463,11 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgeClick={(_event, edge) => { pinnedInspection.current = { kind: "edge", id: edge.id }; setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseEnter={(_event, edge) => { if (!pinnedInspection.current) setInspected(edge.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []); }}
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
+          onReconnect={(edge, connection) => { void reconnectCable(edge, connection); }}
+          onReconnectStart={() => { reconnectCompleted.current = false; }}
+          onReconnectEnd={(_event, edge) => {
+            if (!reconnectCompleted.current) void disconnect(edge);
+          }}
           onInit={(instance) => { flow.current = instance; }}
           onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); void loadGraphAnalysis(node.id); }}
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
@@ -477,13 +506,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
                 <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>}
             </section>
           ))}
-        {inspected[0]?.kind === "CABLE" && <>
-          <button onClick={() => {
-            const edge = edges.find((candidate) => candidate.id === inspected[0].id);
-            if (edge) void disconnect(edge);
-          }}>Disconnect</button>
-          <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
-        </>}
         {inspectedDevice && (
           <>
             {inspectedSchema && <ConfigureObjectForm
