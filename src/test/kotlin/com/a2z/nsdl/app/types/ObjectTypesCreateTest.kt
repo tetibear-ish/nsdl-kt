@@ -2,11 +2,18 @@ package com.a2z.nsdl.app.types
 
 import com.a2z.nsdl.app.CreationContext
 import com.a2z.nsdl.app.validateProperties
+import com.a2z.nsdl.dhcp.BootOp
+import com.a2z.nsdl.dhcp.DhcpMessage
+import com.a2z.nsdl.dhcp.DhcpMessageType
 import com.a2z.nsdl.link.EthernetInterface
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.PowerState
+import com.a2z.nsdl.net.EthernetFrame
+import com.a2z.nsdl.net.Ipv4Address
+import com.a2z.nsdl.net.Ipv4Packet
 import com.a2z.nsdl.net.MacAddress
+import com.a2z.nsdl.net.UdpDatagram
 import com.a2z.nsdl.sim.VirtualScheduler
 import com.a2z.nsdl.testing.RecordingSink
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -91,6 +98,24 @@ class ObjectTypesCreateTest {
         assertTrue(obj.endpoints.isEmpty())
         assertEquals(false, obj.cable!!.isConnected)
         assertEquals(LinkProfile.FAST_ETHERNET_100BASE_TX, obj.cable.profile)
+    }
+
+    @Test
+    fun `a cat5-cable's packet history decodes DHCP fields carried across it`() {
+        val validated = validateProperties(Cat5CableType.schema.properties, emptyMap())
+        val cable = Cat5CableType.create(ObjectId("cable1"), validated.properties, ctx).cable!!
+        val a = EthernetInterface(ObjectId("a.eth0"), MacAddress.local(50), sink)
+        val b = EthernetInterface(ObjectId("b.eth0"), MacAddress.local(51), sink)
+        a.enable(); b.enable(); cable.connect(a, b)
+
+        val discover = DhcpMessage(BootOp.REQUEST, DhcpMessageType.DISCOVER, xid = 42, chaddr = a.mac)
+        a.send(EthernetFrame(a.mac, MacAddress.BROADCAST, Ipv4Packet(Ipv4Address.ANY, Ipv4Address.BROADCAST, UdpDatagram(68, 67, discover))))
+        scheduler.advanceBy(LinkProfile.FAST_ETHERNET_100BASE_TX.propagationDelay)
+
+        @Suppress("UNCHECKED_CAST")
+        val packets = cable.snapshot().state["packets"] as List<Map<String, Any?>>
+        val dhcp = packets.single()["dhcp"] as Map<*, *>
+        assertEquals("DISCOVER", dhcp["messageType"])
     }
 
     @Test
