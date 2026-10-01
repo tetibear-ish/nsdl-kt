@@ -12,6 +12,7 @@ import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.net.ConfigSource
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.Ipv4Config
+import com.a2z.nsdl.net.Ipv4Packet
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.net.OpaquePayload
 import com.a2z.nsdl.net.UdpDatagram
@@ -72,6 +73,23 @@ class Ipv4StackTest {
         scheduler.advanceBy(5.milliseconds)
 
         assertEquals(listOf(OpaquePayload("y")), received.map { it.datagram.payload })
+    }
+
+    @Test
+    fun `a unicast packet that is not ours is handed to the forwarder instead of being dropped`() {
+        val forwarded = mutableListOf<Ipv4Packet>()
+        val nicD = EthernetInterface(ObjectId("d.eth0"), MacAddress.local(4), sink)
+        val nicC = EthernetInterface(ObjectId("c.eth0"), MacAddress.local(3), sink)
+        val routedStack = Ipv4Stack(nicC, sink) { _, packet -> forwarded += packet }
+        nicD.enable(); nicC.enable()
+        Cable(ObjectId("c2"), LinkProfile.FAST_ETHERNET_100BASE_TX, scheduler, sink).connect(nicD, nicC)
+
+        Ipv4Stack(nicD, sink).sendUdp(68, Ipv4Address.parse("192.168.9.9"), 67, OpaquePayload("elsewhere"), dstMac = nicC.mac)
+        scheduler.advanceBy(5.milliseconds)
+
+        assertEquals(listOf(Ipv4Address.parse("192.168.9.9")), forwarded.map { it.dst })
+        assertTrue(sink.of<FrameDropped>(nicC.id).isEmpty(), "a forwarder present means no NO_LISTENER drop")
+        assertTrue(routedStack.config == null, "forwarding does not require local configuration")
     }
 
     @Test

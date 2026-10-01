@@ -38,10 +38,24 @@ fun interface IpConfigurable {
 }
 
 /**
- * Minimal per-interface IPv4 host stack: one address, UDP only, no ARP, no routing or fragmentation.
- * Accepts packets addressed to its address, the limited broadcast, or its subnet broadcast.
+ * Handed an inbound frame whose IPv4 destination is not this interface's own address. Lets a router
+ * compose several [Ipv4Stack]s and forward between them instead of each one silently dropping traffic
+ * meant for another interface. Absent (the default), such a frame is dropped as [DropReason.NO_LISTENER].
  */
-class Ipv4Stack(private val port: FramePort, private val events: EventSink) : UdpTransport, IpConfigurable {
+fun interface Ipv4Forwarder {
+    fun forward(frame: EthernetFrame, packet: Ipv4Packet)
+}
+
+/**
+ * Minimal per-interface IPv4 host stack: one address, UDP only, no ARP, no fragmentation. Accepts
+ * packets addressed to its address, the limited broadcast, or its subnet broadcast; anything else is
+ * handed to [forwarder] when present, or dropped.
+ */
+class Ipv4Stack(
+    private val port: FramePort,
+    private val events: EventSink,
+    private val forwarder: Ipv4Forwarder? = null,
+) : UdpTransport, IpConfigurable {
     private val listeners = mutableMapOf<Int, UdpHandler>()
 
     override var config: Ipv4Config? = null
@@ -76,6 +90,10 @@ class Ipv4Stack(private val port: FramePort, private val events: EventSink) : Ud
 
     private fun onFrame(frame: EthernetFrame) {
         val packet = frame.payload as? Ipv4Packet
+        if (packet != null && !isForUs(packet.dst) && forwarder != null) {
+            forwarder.forward(frame, packet)
+            return
+        }
         val datagram = packet?.payload as? UdpDatagram
         val handler = datagram?.let { listeners[it.dstPort] }
         if (packet == null || datagram == null || handler == null || !isForUs(packet.dst)) {
