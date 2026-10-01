@@ -67,7 +67,7 @@ class Router(
         val cfg = stack.config ?: return@mapNotNull null
         Route(
             destination = Ipv4Address(cfg.address.bits and cfg.subnetMask.bits),
-            prefixLength = Integer.bitCount(cfg.subnetMask.bits),
+            prefixLength = cfg.subnetMask.bits.countOneBits(),
             nextHop = null,
             interfaceId = stack.interfaceId,
             kind = RouteKind.CONNECTED,
