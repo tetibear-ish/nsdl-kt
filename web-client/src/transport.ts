@@ -1,6 +1,6 @@
 import { type ClockSpeed, type ClockState, INITIAL_CLOCK_STATE, observeNow, pause, resume, setSpeed, tickDuration } from "./clock";
 import { acquireLease, type ClockLease, isOwner } from "./clockOwnership";
-import type { CommandResult, ObjectSnapshot, ObjectTypeSchema, SimulationEvent } from "./types";
+import type { CommandResult, ObjectSnapshot, ObjectTypeSchema, Position, SimulationEvent } from "./types";
 
 export interface SimulationTransport {
   execute<T = unknown>(op: string, params?: Record<string, unknown>): Promise<CommandResult<T>>;
@@ -16,6 +16,21 @@ export interface SimulationTransport {
   setClockSpeed(speed: ClockSpeed): void;
   /** Advances virtual time by a fixed amount immediately, regardless of running/paused mode. */
   step(amountMs: number): Promise<void>;
+
+  /** Stable for this transport's lifetime; identifies this client for move idempotency and presence. */
+  readonly clientId: string;
+  /** Shared canvas node positions -- server-owned session state in server-backed mode (see CollabSession
+   * on the Kotlin side), purely local in offline/browser-wasm mode. */
+  getPositions(): Record<string, Position>;
+  onPositionsChange(listener: (positions: Record<string, Position>) => void): () => void;
+  /** Applies optimistically and reconciles to the server's authoritative value on conflict. */
+  movePosition(id: string, position: Position): void;
+  /** Drops a node's position locally, e.g. right after deleting the object it belongs to. */
+  removePosition(id: string): void;
+  /** Lightweight, non-deterministic presence: which client ids are currently connected. Never part of
+   * simulation/event-hub state -- see PresenceRegistry on the Kotlin side. */
+  getPresence(): string[];
+  onPresenceChange(listener: (clientIds: string[]) => void): () => void;
 }
 
 type WireResult<T> = {
@@ -74,6 +89,20 @@ export class RemoteTransport implements SimulationTransport {
   private subscriberCount = 0;
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastTick = Date.now();
+
+  private positions: Record<string, Position> = {};
+  /** The revision at which this client last confirmed each node's position -- the baseRevision it
+   * supplies on its next move, so a concurrent edit to an unrelated node never makes this one look stale. */
+  private positionRevisions: Record<string, number> = {};
+  private readonly positionListeners = new Set<(positions: Record<string, Position>) => void>();
+  private sessionSource: EventSource | undefined;
+  private sessionRevision = 0;
+
+  private presenceClients: string[] = [];
+  private readonly presenceListeners = new Set<(clientIds: string[]) => void>();
+  private presenceSource: EventSource | undefined;
+
+  get clientId(): string { return this.ownerId; }
 
   constructor(baseUrl = "", options: {
     tickMs?: number;
@@ -159,6 +188,133 @@ export class RemoteTransport implements SimulationTransport {
       }
     };
   }
+
+  getPositions(): Record<string, Position> { return this.positions; }
+
+  onPositionsChange(listener: (positions: Record<string, Position>) => void): () => void {
+    this.positionListeners.add(listener);
+    this.ensureSessionConnected();
+    return () => {
+      this.positionListeners.delete(listener);
+      if (this.positionListeners.size === 0) {
+        this.sessionSource?.close();
+        this.sessionSource = undefined;
+      }
+    };
+  }
+
+  movePosition(id: string, position: Position): void {
+    const baseRevision = this.positionRevisions[id];
+    this.positions = { ...this.positions, [id]: position };
+    this.notifyPositions();
+
+    const requestId = crypto.randomUUID();
+    void fetch(`${this.baseUrl}/api/move`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id, x: position.x, y: position.y, clientId: this.clientId, requestId, baseRevision }),
+    }).then(async (response) => {
+      const wire = await response.json() as
+        | { type: "applied"; revision: number }
+        | { type: "conflict"; revision: number; current: Position | null }
+        | { type: "error"; error: { code: string; message: string } };
+      if (wire.type === "applied") {
+        this.positionRevisions[id] = wire.revision;
+      } else if (wire.type === "conflict") {
+        this.positionRevisions[id] = wire.revision;
+        this.applyPatch({ changed: wire.current ? { [id]: wire.current } : {}, removed: wire.current ? [] : [id] });
+      }
+      // An "error" (e.g. IDEMPOTENCY_CONFLICT) should not occur with a fresh requestId each call;
+      // the optimistic value simply stands until the next confirmed move or session patch.
+    }).catch(() => {
+      // Best-effort: on network failure the optimistic value stands; a later patch or reconnect reconciles it.
+    });
+  }
+
+  removePosition(id: string): void {
+    if (!(id in this.positions)) return;
+    delete this.positionRevisions[id];
+    this.applyPatch({ changed: {}, removed: [id] });
+  }
+
+  getPresence(): string[] { return this.presenceClients; }
+
+  onPresenceChange(listener: (clientIds: string[]) => void): () => void {
+    this.presenceListeners.add(listener);
+    this.ensurePresenceConnected();
+    return () => {
+      this.presenceListeners.delete(listener);
+      if (this.presenceListeners.size === 0) {
+        this.presenceSource?.close();
+        this.presenceSource = undefined;
+      }
+    };
+  }
+
+  private applyPatch(patch: { changed: Record<string, Position>; removed: string[] }) {
+    const next = { ...this.positions };
+    Object.entries(patch.changed).forEach(([id, position]) => { next[id] = position; });
+    patch.removed.forEach((id) => { delete next[id]; });
+    this.positions = next;
+    this.notifyPositions();
+  }
+
+  private notifyPositions() {
+    this.positionListeners.forEach((listener) => listener(this.positions));
+  }
+
+  private ensureSessionConnected() {
+    if (this.sessionSource || this.positionListeners.size === 0) return;
+    void this.loadSessionSnapshot().then(() => this.openSessionStream());
+  }
+
+  private async loadSessionSnapshot() {
+    const response = await fetch(`${this.baseUrl}/api/session/snapshot`);
+    const body = await response.json() as { revision: number; positions: Record<string, Position> };
+    this.positions = { ...body.positions };
+    Object.keys(body.positions).forEach((id) => { this.positionRevisions[id] = body.revision; });
+    this.sessionRevision = body.revision;
+    this.notifyPositions();
+  }
+
+  private openSessionStream() {
+    if (this.positionListeners.size === 0) return;
+    const source = new EventSource(`${this.baseUrl}/api/session/stream?from=${this.sessionRevision}`);
+    source.onmessage = (message) => {
+      const patch = JSON.parse(message.data) as
+        { type: "patch"; revision: number; changed: Record<string, Position>; removed: string[] }
+        | { type: "gap" };
+      if (patch.type === "gap") {
+        this.resyncSession();
+        return;
+      }
+      this.sessionRevision = patch.revision;
+      Object.keys(patch.changed).forEach((id) => { this.positionRevisions[id] = patch.revision; });
+      patch.removed.forEach((id) => { delete this.positionRevisions[id]; });
+      this.applyPatch(patch);
+    };
+    source.onerror = () => this.resyncSession();
+    this.sessionSource = source;
+  }
+
+  private resyncSession() {
+    this.sessionSource?.close();
+    this.sessionSource = undefined;
+    if (this.positionListeners.size === 0) return;
+    void this.loadSessionSnapshot().then(() => this.openSessionStream());
+  }
+
+  private ensurePresenceConnected() {
+    if (this.presenceSource || this.presenceListeners.size === 0) return;
+    const source = new EventSource(`${this.baseUrl}/api/presence?clientId=${encodeURIComponent(this.clientId)}`);
+    source.onmessage = (message) => {
+      const body = JSON.parse(message.data) as { type: "roster"; clients: string[] };
+      if (body.type !== "roster") return;
+      this.presenceClients = body.clients;
+      this.presenceListeners.forEach((listener) => listener(this.presenceClients));
+    };
+    this.presenceSource = source;
+  }
 }
 
 const LEASE_KEY = "nsdl-clock-lease";
@@ -181,6 +337,12 @@ export class BrowserWasmTransport implements SimulationTransport {
   private timer: ReturnType<typeof setInterval> | undefined;
   private lastTick = Date.now();
   private lastRevision = 0;
+
+  /** No real multi-client session exists in offline/browser-wasm mode: positions and presence are
+   * purely local, in-memory, and never leave this tab. */
+  readonly clientId = crypto.randomUUID();
+  private positions: Record<string, Position> = {};
+  private readonly positionListeners = new Set<(positions: Record<string, Position>) => void>();
 
   constructor(ready?: Promise<WasmBridge>, private readonly tickMs = 250) {
     this.ready = ready ?? window.nsdlWasmReady ?? new Promise(() => {});
@@ -231,6 +393,33 @@ export class BrowserWasmTransport implements SimulationTransport {
         this.timer = undefined;
       }
     };
+  }
+
+  getPositions(): Record<string, Position> { return this.positions; }
+
+  onPositionsChange(listener: (positions: Record<string, Position>) => void): () => void {
+    this.positionListeners.add(listener);
+    return () => this.positionListeners.delete(listener);
+  }
+
+  movePosition(id: string, position: Position): void {
+    this.positions = { ...this.positions, [id]: position };
+    this.positionListeners.forEach((listener) => listener(this.positions));
+  }
+
+  removePosition(id: string): void {
+    if (!(id in this.positions)) return;
+    const next = { ...this.positions };
+    delete next[id];
+    this.positions = next;
+    this.positionListeners.forEach((listener) => listener(this.positions));
+  }
+
+  getPresence(): string[] { return [this.clientId]; }
+
+  onPresenceChange(listener: (clientIds: string[]) => void): () => void {
+    listener(this.getPresence());
+    return () => {};
   }
 }
 
