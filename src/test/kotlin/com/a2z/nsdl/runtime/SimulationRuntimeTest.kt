@@ -213,4 +213,52 @@ class SimulationRuntimeTest {
         val created = runtime.submit(Request(Command.Create("printer1", "printer")))
         assertEquals(created.revision, runtime.currentRevision())
     }
+
+    @Test
+    fun `moveNode applies a position and it is reflected in sessionSnapshot`() {
+        val runtime = newRuntime()
+
+        val outcome = runtime.moveNode(MoveRequest("client-a", "printer1", Position(5.0, 6.0)))
+
+        assertTrue(outcome is MoveOutcome.Applied)
+        assertEquals(mapOf("printer1" to Position(5.0, 6.0)), runtime.sessionSnapshot().changed)
+    }
+
+    @Test
+    fun `deleting an object removes its session position and bumps the session revision`() {
+        val runtime = newRuntime()
+        runtime.submit(Request(Command.Create("printer1", "printer")))
+        runtime.moveNode(MoveRequest("client-a", "printer1", Position(1.0, 2.0)))
+        val revisionBeforeDelete = runtime.sessionSnapshot().revision
+
+        val deleteResult = runtime.submit(Request(Command.Delete("printer1")))
+
+        assertTrue(deleteResult.result is CommandResult.Ok)
+        val snapshot = runtime.sessionSnapshot()
+        assertTrue(snapshot.revision > revisionBeforeDelete)
+        assertTrue(snapshot.changed.isEmpty(), "the deleted object's position is gone")
+    }
+
+    @Test
+    fun `a stale baseRevision is rejected as a session conflict, not silently applied`() {
+        val runtime = newRuntime()
+        runtime.moveNode(MoveRequest("client-a", "n1", Position(1.0, 1.0))) // session revision 1
+
+        val outcome = runtime.moveNode(MoveRequest("client-b", "n1", Position(9.0, 9.0), baseRevision = 0L))
+
+        assertTrue(outcome is MoveOutcome.Conflict)
+        assertEquals(mapOf("n1" to Position(1.0, 1.0)), runtime.sessionSnapshot().changed)
+    }
+
+    @Test
+    fun `subscribeSession from a move's own revision replays only later moves, with no gap`() {
+        val runtime = newRuntime()
+        runtime.moveNode(MoveRequest("client-a", "n1", Position(1.0, 1.0))) // revision 1
+
+        val sub = (runtime.subscribeSession(from = 1L, capacity = 10) as SessionSubscribeResult.Subscribed).subscription
+        runtime.moveNode(MoveRequest("client-a", "n2", Position(2.0, 2.0))) // revision 2
+
+        val patches = generateSequence { sub.poll() }.filterIsInstance<SessionDelivery.Patch>().map { it.patch.changed }.toList()
+        assertEquals(listOf(mapOf("n2" to Position(2.0, 2.0))), patches)
+    }
 }
