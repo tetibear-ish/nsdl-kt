@@ -21,7 +21,7 @@ import { useClockTimeStore } from "./clockStore";
 import { DhcpLeasePanel } from "./DhcpLeasePanel";
 import { DhcpServerPanel } from "./DhcpServerPanel";
 import { NetworkNode } from "./NetworkNode";
-import { analyzeGraph } from "./graphAnalysis";
+import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
 import {
   buildDocument,
@@ -50,7 +50,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const [status, setStatus] = useState("Connecting…");
   const [log, setLog] = useState<string[]>(["Simulation ready; virtual clock runs at 1× in offline mode."]);
   const [inspected, setInspected] = useState<ObjectSnapshot[]>([]);
-  const [analysisRoot, setAnalysisRoot] = useState<string | null>(null);
+  const [graphAnalysis, setGraphAnalysis] = useState<GraphAnalysis | null>(null);
   const placement = useRef({ x: 120, y: 120 });
   const flow = useRef<ReactFlowInstance<NetworkNodeType, Edge> | null>(null);
   const powerStates = useRef<Record<string, unknown>>({});
@@ -75,6 +75,11 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const results = await Promise.all(inspectionIds(snapshot).map((id) => transport.execute<ObjectSnapshot>("inspect", { id })));
     if (pinnedInspection.current?.kind === "node" && pinnedInspection.current.id !== snapshot.id) return;
     setInspected(results.flatMap((result) => result.ok ? [result.data] : []));
+  }, [transport]);
+
+  const loadGraphAnalysis = useCallback(async (id: string) => {
+    const result = await transport.execute<GraphAnalysis>("analyzeGraph", { id });
+    if (result.ok) setGraphAnalysis(result.data);
   }, [transport]);
 
   const fetchDeviceServices = useCallback(async (devices: ObjectSnapshot[], suffix: string) => {
@@ -116,14 +121,14 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const pinned = pinnedInspection.current;
     if (pinned?.kind === "node") {
       const node = projected.nodes.find((candidate) => candidate.id === pinned.id);
-      if (node) void loadNodeInspection(node.data.snapshot);
+      if (node) { void loadNodeInspection(node.data.snapshot); void loadGraphAnalysis(node.id); }
     } else if (pinned?.kind === "edge") {
       const edge = projected.edges.find((candidate) => candidate.id === pinned.id);
       setInspected(edge?.data?.snapshot ? [edge.data.snapshot as ObjectSnapshot] : []);
     }
     setStatus(`revision ${result.revision}`);
     return result.revision;
-  }, [fetchDeviceServices, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
+  }, [fetchDeviceServices, loadGraphAnalysis, loadNodeInspection, setEdges, setNodes, togglePower, transport]);
 
   useEffect(() => {
     let unsubscribe = () => {};
@@ -325,11 +330,6 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   }, []);
 
   const proOptions = useMemo(() => ({ hideAttribution: true }), []);
-  const graphAnalysis = useMemo(() => analysisRoot ? analyzeGraph(
-    nodes.map((node) => node.id),
-    edges.map((edge) => [edge.source, edge.target] as [string, string]),
-    analysisRoot,
-  ) : null, [analysisRoot, edges, nodes]);
 
   return (
     <main className="app-shell">
@@ -397,7 +397,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           onEdgeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onReconnectEnd={(_event, edge, _handle, connectionState) => { if (!connectionState.isValid) void disconnect(edge); }}
           onInit={(instance) => { flow.current = instance; }}
-          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; setAnalysisRoot(node.id); void loadNodeInspection(node.data.snapshot); }}
+          onNodeClick={(_event, node) => { pinnedInspection.current = { kind: "node", id: node.id }; void loadNodeInspection(node.data.snapshot); void loadGraphAnalysis(node.id); }}
           onNodeMouseEnter={(_event, node) => { if (!pinnedInspection.current) void loadNodeInspection(node.data.snapshot); }}
           onNodeMouseLeave={() => { if (!pinnedInspection.current) setInspected([]); }}
           onNodeDragStop={(_event, node) => {
@@ -409,7 +409,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           }}
           onNodesChange={onNodesChange}
           onPaneContextMenu={(event) => { event.preventDefault(); openAddAt(event.clientX, event.clientY); }}
-          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setAnalysisRoot(null); }}
+          onPaneClick={() => { pinnedInspection.current = null; setInspected([]); setGraphAnalysis(null); }}
           proOptions={proOptions}
         >
           <Background color="#29445f" gap={24} variant={BackgroundVariant.Dots} />
@@ -441,10 +441,10 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           <button className="secondary" onClick={() => { void deleteObject(inspected[0].id); }}>Delete</button>
         )}
         {graphAnalysis && <section className="graph-analysis">
-          <h3>Graph analysis · {analysisRoot}</h3>
+          <h3>Graph analysis · {graphAnalysis.nodeId}</h3>
           <dl>
             <dt>Degree</dt><dd>{graphAnalysis.degree}</dd>
-            <dt>Connected component</dt><dd>{graphAnalysis.component.join(", ")}</dd>
+            <dt>Connected component</dt><dd>{graphAnalysis.connectedComponent.join(", ")}</dd>
             <dt>Articulation point</dt><dd>{graphAnalysis.articulationPoint ? "yes" : "no"}</dd>
           </dl>
           <details><summary>Shortest paths</summary><pre>{JSON.stringify(graphAnalysis.shortestPaths, null, 2)}</pre></details>
