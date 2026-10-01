@@ -10,6 +10,7 @@ import com.a2z.nsdl.app.types.Cat5CableType
 import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
+import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.events.EventRecord
 import com.a2z.nsdl.ipc.json.Json
@@ -200,6 +201,17 @@ class WebSimulation(seed: Long = 0L) {
             is EventPayload.LinkStateChanged -> mapOf("up" to payload.up)
             is EventPayload.ProtocolStateChanged -> mapOf("protocol" to payload.protocol, "from" to payload.from, "to" to payload.to)
             is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
+            is EventPayload.PacketObserved -> mapOf(
+                "transitId" to payload.transitId,
+                "sentAtMs" to payload.sentAtMs,
+                "from" to payload.from.value,
+                "to" to payload.to.value,
+                "sourceMac" to payload.frame.src.toString(),
+                "destMac" to payload.frame.dst.toString(),
+                "frame" to payload.frame.describe(),
+                "outcome" to payload.outcome.name,
+                "dropReason" to payload.dropReason?.name,
+            ) + PacketDecoder.decode(payload.frame)
             else -> emptyMap<String, Any?>()
         },
     )
