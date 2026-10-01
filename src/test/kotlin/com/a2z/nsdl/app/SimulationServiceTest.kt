@@ -63,6 +63,66 @@ class SimulationServiceTest {
         return (result as CommandResult.Rejected).error
     }
 
+    @Suppress("UNCHECKED_CAST")
+    private fun graphAnalysis(id: String): Map<String, Any?> =
+        ok(service.handle(Command.AnalyzeGraph(id))).data as Map<String, Any?>
+
+    private fun connect(cable: String, a: String, b: String) {
+        ok(create(cable, "cat5-cable"))
+        ok(service.handle(Command.Connect(cable, EndpointRef(a), EndpointRef(b))))
+    }
+
+    @Test
+    fun `graph analysis reports component degree hop counts and articulation status for a node`() {
+        registry.register(EthernetSwitchType)
+        ok(create("printer1", "printer"))
+        ok(create("printer2", "printer"))
+        ok(create("switch1", "ethernet-switch"))
+        ok(create("gateway1", "gateway"))
+        connect("cable1", "printer1.eth0", "switch1.port1")
+        connect("cable2", "printer2.eth0", "switch1.port2")
+        connect("cable3", "gateway1.eth0", "switch1.port3")
+
+        assertEquals(
+            mapOf(
+                "nodeId" to "switch1",
+                "connectedComponent" to listOf("gateway1", "printer1", "printer2", "switch1"),
+                "degree" to 3,
+                "shortestPaths" to mapOf("gateway1" to 1, "printer1" to 1, "printer2" to 1, "switch1" to 0),
+                "articulationPoint" to true,
+            ),
+            graphAnalysis("switch1"),
+        )
+
+        val printerAnalysis = graphAnalysis("printer1")
+        assertEquals(mapOf("gateway1" to 2, "printer1" to 0, "printer2" to 2, "switch1" to 1), printerAnalysis["shortestPaths"])
+        assertEquals(false, printerAnalysis["articulationPoint"])
+        assertEquals(false, ok(service.handle(Command.AnalyzeGraph("switch1"))).changed)
+    }
+
+    @Test
+    fun `graph analysis treats a disconnected device as an isolated component`() {
+        ok(create("printer1", "printer"))
+
+        assertEquals(
+            mapOf(
+                "nodeId" to "printer1",
+                "connectedComponent" to listOf("printer1"),
+                "degree" to 0,
+                "shortestPaths" to mapOf("printer1" to 0),
+                "articulationPoint" to false,
+            ),
+            graphAnalysis("printer1"),
+        )
+    }
+
+    @Test
+    fun `graph analysis rejects unknown objects and cable ids`() {
+        assertEquals(ErrorCode.UNKNOWN_OBJECT, rejected(service.handle(Command.AnalyzeGraph("missing"))).code)
+        ok(create("cable1", "cat5-cable"))
+        assertEquals(ErrorCode.INVALID_REQUEST, rejected(service.handle(Command.AnalyzeGraph("cable1"))).code)
+    }
+
     // -- Create: ids and types --
 
     @Test

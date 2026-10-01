@@ -101,6 +101,12 @@ class RequestCodecTest {
     }
 
     @Test
+    fun `decodes node-scoped graph analysis`() {
+        val result = RequestCodec.decode("""{"v":1,"id":"r1","op":"analyzeGraph","params":{"id":"switch1"}}""")
+        assertEquals(DecodeResult.Decoded("r1", IpcOperation.Run(Command.AnalyzeGraph("switch1"))), result)
+    }
+
+    @Test
     fun `decodes applyTopology as a batch of Create then Connect commands`() {
         val result = RequestCodec.decode(
             """{"v":1,"id":"r1","op":"applyTopology","params":{

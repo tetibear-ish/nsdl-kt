@@ -54,6 +54,7 @@ class SimulationService(
         Command.ListTypes -> CommandResult.Ok(registry.list())
         Command.ListObjects -> CommandResult.Ok(objects.values.map { it.obj.root.snapshot() })
         is Command.Inspect -> handleInspect(command)
+        is Command.AnalyzeGraph -> handleAnalyzeGraph(command)
         is Command.Delete -> handleDelete(command)
     }
 
@@ -228,6 +229,78 @@ class SimulationService(
         val target = objects[id]?.obj?.root
             ?: objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
         return target?.let { CommandResult.Ok(it.snapshot()) } ?: unknownObject(cmd.id)
+    }
+
+    /**
+     * Builds an undirected graph from the current physical topology. Simulation devices are
+     * vertices and connected cable objects are edges; disconnected cables and protocol state do
+     * not affect the result. All collections are sorted so the wire response is deterministic.
+     */
+    private fun handleAnalyzeGraph(cmd: Command.AnalyzeGraph): CommandResult {
+        if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
+        val selectedId = ObjectId(cmd.id)
+        val selected = objects[selectedId] ?: return unknownObject(cmd.id)
+        if (selected.obj.cable != null) {
+            return rejected(ErrorCode.INVALID_REQUEST, "'${cmd.id}' is a cable, not a graph node")
+        }
+
+        val nodes = objects.filterValues { it.obj.cable == null }.keys
+        val endpointOwners = buildMap {
+            objects.forEach { (objectId, registered) ->
+                registered.obj.endpoints.forEach { endpoint -> put(endpoint.id, objectId) }
+            }
+        }
+        val adjacency = nodes.associateWith { mutableSetOf<ObjectId>() }
+        objects.values.forEach { registered ->
+            val (a, b) = registered.obj.cable?.endpoints ?: return@forEach
+            val ownerA = endpointOwners[a.id] ?: return@forEach
+            val ownerB = endpointOwners[b.id] ?: return@forEach
+            if (ownerA != ownerB) {
+                adjacency.getValue(ownerA).add(ownerB)
+                adjacency.getValue(ownerB).add(ownerA)
+            }
+        }
+
+        val distances = breadthFirstDistances(selectedId, adjacency)
+        val component = distances.keys
+        val articulationPoint = if (component.size <= 2) {
+            false
+        } else {
+            val start = component.first { it != selectedId }
+            breadthFirstDistances(start, adjacency, excluded = selectedId).keys.size != component.size - 1
+        }
+
+        return CommandResult.Ok(
+            mapOf(
+                "nodeId" to selectedId.value,
+                "connectedComponent" to component.map { it.value }.sorted(),
+                "degree" to adjacency.getValue(selectedId).size,
+                "shortestPaths" to distances.entries.sortedBy { it.key.value }.associate { it.key.value to it.value },
+                "articulationPoint" to articulationPoint,
+            ),
+            changed = false,
+        )
+    }
+
+    private fun breadthFirstDistances(
+        start: ObjectId,
+        adjacency: Map<ObjectId, Set<ObjectId>>,
+        excluded: ObjectId? = null,
+    ): Map<ObjectId, Int> {
+        if (start == excluded) return emptyMap()
+        val distances = linkedMapOf(start to 0)
+        val queue = ArrayDeque<ObjectId>().apply { add(start) }
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            adjacency.getValue(current).asSequence()
+                .filter { it != excluded && it !in distances }
+                .sortedBy { it.value }
+                .forEach { neighbor ->
+                    distances[neighbor] = distances.getValue(current) + 1
+                    queue.add(neighbor)
+                }
+        }
+        return distances
     }
 
     /**

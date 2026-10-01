@@ -57,7 +57,7 @@ class InputJournal {
             is Command.Create, is Command.ApplyTopology, is Command.Connect, is Command.Disconnect,
             is Command.Configure, is Command.PowerOn, is Command.PowerOff, is Command.Advance, is Command.Delete,
             -> true
-            Command.ListTypes, Command.ListObjects, is Command.Inspect -> false
+            Command.ListTypes, Command.ListObjects, is Command.Inspect, is Command.AnalyzeGraph -> false
         }
     }
 }

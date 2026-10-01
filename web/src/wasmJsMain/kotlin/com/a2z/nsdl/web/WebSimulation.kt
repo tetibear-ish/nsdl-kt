@@ -73,6 +73,7 @@ class WebSimulation(seed: Long = 0L) {
         "listTypes" -> Command.ListTypes
         "listObjects" -> Command.ListObjects
         "inspect" -> Command.Inspect(stringParam(params, "id"))
+        "analyzeGraph" -> Command.AnalyzeGraph(stringParam(params, "id"))
         "create" -> Command.Create(stringParam(params, "id"), stringParam(params, "type"), propsParam(params))
         "applyTopology" -> {
             @Suppress("UNCHECKED_CAST")
@@ -134,6 +135,10 @@ class WebSimulation(seed: Long = 0L) {
         "inspect" -> {
             require(words.size == 2) { "usage: inspect ID" }
             Command.Inspect(words[1])
+        }
+        "analyze-graph" -> {
+            require(words.size == 2) { "usage: analyze-graph ID" }
+            Command.AnalyzeGraph(words[1])
         }
         "delete" -> {
             require(words.size == 2) { "usage: delete ID" }
@@ -229,7 +234,7 @@ class WebSimulation(seed: Long = 0L) {
 
     companion object {
         private val HELP = """
-            types | list | inspect ID
+            types | list | inspect ID | analyze-graph ID
             create TYPE ID [PROPERTY=VALUE ...]
             connect CABLE ENDPOINT_A ENDPOINT_B | disconnect CABLE
             power-on ID | power-off ID | delete ID | advance MILLISECONDS
