@@ -16,6 +16,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { defaultObjectId } from "./AddObjectDialog";
 import { eventToPulse } from "./activity";
 import { useActivityStore } from "./activityStore";
+import { CableHistoryPanel } from "./CableHistoryPanel";
 import { CLOCK_SPEEDS, type ClockState, formatVirtualTime, INITIAL_CLOCK_STATE } from "./clock";
 import { useClockTimeStore } from "./clockStore";
 import { moveCable, type CableEndpoints } from "./cableMove";
@@ -26,6 +27,9 @@ import { HistoryDropdown } from "./HistoryDropdown";
 import { NetworkNode } from "./NetworkNode";
 import type { GraphAnalysis } from "./graphAnalysis";
 import { inspectionIds } from "./inspector";
+import { eventToPacket } from "./packetInspector";
+import { PacketInspectorPanel } from "./PacketInspectorPanel";
+import { usePacketInspectorStore } from "./packetInspectorStore";
 import {
   buildDocument,
   exportDocumentAsFile,
@@ -67,6 +71,15 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
   const importInput = useRef<HTMLInputElement | null>(null);
   const undoStack = useRef(new UndoStack(UNDO_CAPACITY));
   const [clock, setClock] = useState<ClockState>(INITIAL_CLOCK_STATE);
+  const packetEvents = usePacketInspectorStore((state) => state.events);
+  const packetFilter = usePacketInspectorStore((state) => state.filter);
+  const packetsPaused = usePacketInspectorStore((state) => state.paused);
+  const setPacketFilter = usePacketInspectorStore((state) => state.setFilter);
+  const clearPackets = usePacketInspectorStore((state) => state.clear);
+  const togglePacketsPaused = useCallback(
+    () => usePacketInspectorStore.getState().setPaused(!usePacketInspectorStore.getState().paused),
+    [],
+  );
 
   const togglePower = useCallback(async (snapshot: ObjectSnapshot) => {
     const op = snapshot.state.power === "OFF" ? "powerOn" : "powerOff";
@@ -95,6 +108,16 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
     const result = await transport.execute<GraphAnalysis>("analyzeGraph", { id });
     if (result.ok) setGraphAnalysis(result.data);
   }, [transport]);
+
+  /** Jumps pinned inspection to a node by id -- how the packet-inspection pane and per-cable history
+   * (S20) navigate from an observed packet's endpoint to the node whose decision explains it. */
+  const navigateToNode = useCallback((nodeId: string) => {
+    const node = flow.current?.getNode(nodeId);
+    if (!node) return;
+    pinnedInspection.current = { kind: "node", id: nodeId };
+    void loadNodeInspection(node.data.snapshot);
+    void loadGraphAnalysis(nodeId);
+  }, [loadGraphAnalysis, loadNodeInspection]);
 
   const fetchDeviceServices = useCallback(async (devices: ObjectSnapshot[], suffix: string) => {
     const services = devices.flatMap((snapshot) =>
@@ -164,6 +187,14 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
           // Frame activity alone never changes topology structure, so skip the full refresh --
           // otherwise a burst of traffic would trigger an unbounded listObjects()/re-project per frame.
           useActivityStore.getState().record(event.seq ?? 0, pulse.portId, pulse.kind, pulse.reason);
+          return;
+        }
+        const packet = eventToPacket(event);
+        if (packet) {
+          // Likewise: a decoded packet alone never changes topology structure. Recording runs on
+          // the UI thread only (record() is a no-op while paused) -- it never touches, slows or
+          // blocks the simulation runtime that already published the event.
+          usePacketInspectorStore.getState().record(packet);
           return;
         }
         void refresh();
@@ -508,7 +539,8 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
               <h3>{snapshot.id}</h3>
               {snapshot.type === "dhcp-client" && <DhcpLeasePanel snapshot={snapshot} nowMs={clock.nowMs} />}
               {snapshot.type === "dhcp-server" && <DhcpServerPanel snapshot={snapshot} nowMs={clock.nowMs} />}
-              {snapshot.type !== "dhcp-client" && snapshot.type !== "dhcp-server" &&
+              {snapshot.kind === "CABLE" && <CableHistoryPanel snapshot={snapshot} onNavigate={navigateToNode} />}
+              {snapshot.type !== "dhcp-client" && snapshot.type !== "dhcp-server" && snapshot.kind !== "CABLE" &&
                 <pre>{JSON.stringify({ type: snapshot.type, kind: snapshot.kind, state: snapshot.state, relations: snapshot.relations }, null, 2)}</pre>}
             </section>
           ))}
@@ -539,10 +571,21 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
         <button onClick={() => { void quickCreate("gateway"); }}>+ Gateway</button>
         <button onClick={() => { void quickCreate("ethernet-switch"); }}>+ Switch</button>
       </nav>}
-      <section className="activity-log" aria-label="Activity log">
-        <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
-        <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>
-      </section>
+      <div className="bottom-panels">
+        <section className="activity-log" aria-label="Activity log">
+          <header><strong>Activity</strong><button className="secondary" onClick={() => setLog([])}>Clear</button></header>
+          <ol>{log.map((entry, index) => <li key={`${index}-${entry}`}>{entry}</li>)}</ol>
+        </section>
+        <PacketInspectorPanel
+          packets={packetEvents}
+          filter={packetFilter}
+          paused={packetsPaused}
+          onSetFilter={setPacketFilter}
+          onTogglePause={togglePacketsPaused}
+          onClear={clearPackets}
+          onNavigate={navigateToNode}
+        />
+      </div>
     </main>
   );
 }

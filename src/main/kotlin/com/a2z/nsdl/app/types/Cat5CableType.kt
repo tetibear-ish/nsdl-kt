@@ -6,6 +6,7 @@ import com.a2z.nsdl.app.ObjectTypeSchema
 import com.a2z.nsdl.app.PropertySpec
 import com.a2z.nsdl.app.PropertyType
 import com.a2z.nsdl.app.SimObject
+import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.link.Cable
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.ObjectId
@@ -31,7 +32,10 @@ object Cat5CableType : ObjectType {
 
     override fun create(id: ObjectId, props: Map<String, Any?>, ctx: CreationContext): SimObject {
         val profile = props["profile"] as LinkProfile
-        val cable = Cable(id, profile, ctx.scheduler, ctx.events, type = schema.name)
+        val cable = Cable(
+            id, profile, ctx.scheduler, ctx.events, type = schema.name,
+            describePayload = PacketDecoder::decodeUdpPayload,
+        )
         return SimObject(root = cable, cable = cable)
     }
 }

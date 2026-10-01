@@ -38,6 +38,17 @@ data class DhcpMessage(
         serverId?.let { append(" server=").append(it) }
     }
 
+    /**
+     * The client address this message is most relevantly about, for presentation (e.g. packet
+     * inspection): the server's assignment ([yiaddr]) takes priority, then the client's own current
+     * address when renewing ([ciaddr]), then what it is requesting (option 50). Null if none apply.
+     */
+    fun resolvedClientAddress(): Ipv4Address? = when {
+        !yiaddr.isUnspecified -> yiaddr
+        !ciaddr.isUnspecified -> ciaddr
+        else -> requestedIp
+    }
+
     companion object {
         const val SERVER_PORT = 67
         const val CLIENT_PORT = 68

@@ -22,6 +22,9 @@ import com.a2z.nsdl.net.Ipv4Packet
  * - [NetworkConfigChanged] (source = interface): IP configuration applied or cleared.
  * - [ConfigurationChanged]: persistent configuration updated by a command.
  * - [ActionPerformed]: a [com.a2z.nsdl.app.Command.Invoke] was dispatched to an Actionable component.
+ * - [PacketObserved] (source = cable): one frame's transit of that cable, observed at both the frame
+ *   and the decoded-packet layer under one shared [PacketObserved.transitId] -- the per-cable history
+ *   and the protocol-aware packet-inspection pane (S20) both read this event.
  */
 sealed interface EventPayload {
     val name: String get() = this::class.simpleName!!
@@ -43,15 +46,28 @@ sealed interface EventPayload {
     data class ConfigurationChanged(val properties: Map<String, Any?>) : EventPayload
     data class DecisionRecorded(val record: DecisionRecord) : EventPayload
     data class ActionPerformed(val action: String, val accepted: Boolean, val detail: String) : EventPayload
+    data class PacketObserved(
+        val transitId: String,
+        val sentAtMs: Long,
+        val from: ObjectId,
+        val to: ObjectId,
+        val frame: EthernetFrame,
+        val outcome: TransitOutcome,
+        val dropReason: DropReason? = null,
+    ) : EventPayload
 
     companion object {
         val NAMES: Set<String> = setOf(
             "ObjectCreated", "ObjectDeleted", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
             "LinkStateChanged", "FrameSent", "FrameReceived", "FrameDropped", "PacketAccepted",
             "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged", "DecisionRecorded", "ActionPerformed",
+            "PacketObserved",
         )
     }
 }
+
+/** The outcome of one frame's transit across a cable, from the cable's own point of view. */
+enum class TransitOutcome { DELIVERED, DROPPED }
 
 enum class DropReason {
     /** Sender's link was unavailable (unplugged, peer off, or own interface disabled). */
