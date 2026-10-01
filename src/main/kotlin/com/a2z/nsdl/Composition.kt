@@ -6,6 +6,7 @@ import com.a2z.nsdl.app.types.ComputerType
 import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
+import com.a2z.nsdl.app.types.RoutedGatewayType
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.runtime.SimulationRuntime
 import com.a2z.nsdl.sim.VirtualScheduler
@@ -22,6 +23,7 @@ class Composition(randomSeed: Long = System.nanoTime()) {
         register(PrinterType)
         register(ComputerType)
         register(DhcpServerHostType)
+        register(RoutedGatewayType)
         register(EthernetSwitchType)
         register(Cat5CableType)
     }
