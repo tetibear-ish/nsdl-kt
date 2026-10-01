@@ -127,6 +127,13 @@ export function exchangeKey(event: ObservedPacket): string {
   return `${event.protocol}:${[event.from, event.to].sort().join("<->")}`;
 }
 
+/** The owning node of a port/interface/service id (e.g. "printer1.eth0" -> "printer1"), for
+ * navigating from a packet's endpoint to the node whose decision log explains it. */
+export function rootNodeId(endpointId: string): string {
+  const dot = endpointId.indexOf(".");
+  return dot === -1 ? endpointId : endpointId.slice(0, dot);
+}
+
 export type ExchangeGroup = { key: string; events: ObservedPacket[] };
 
 /** Groups packets by [exchangeKey], preserving first-seen order of both groups and events within a group. */

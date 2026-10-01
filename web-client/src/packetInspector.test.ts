@@ -7,6 +7,7 @@ import {
   MAX_PACKET_EVENTS,
   matchesFilter,
   pushPacket,
+  rootNodeId,
   type ObservedPacket,
 } from "./packetInspector";
 import type { SimulationEvent } from "./types";
@@ -113,6 +114,12 @@ describe("matchesFilter / filterPackets", () => {
   it("an empty filter matches everything", () => {
     expect(filterPackets([dhcpDiscover, droppedUdp], {})).toEqual([dhcpDiscover, droppedUdp]);
   });
+});
+
+describe("rootNodeId: navigation back to the owning node", () => {
+  it("strips a port/service suffix", () => expect(rootNodeId("printer1.eth0")).toBe("printer1"));
+  it("strips a nested service suffix", () => expect(rootNodeId("gateway1.dhcp-server")).toBe("gateway1"));
+  it("is the id itself when there is no suffix", () => expect(rootNodeId("cable1")).toBe("cable1"));
 });
 
 describe("exchangeKey / groupByExchange: protocol-exchange grouping", () => {
