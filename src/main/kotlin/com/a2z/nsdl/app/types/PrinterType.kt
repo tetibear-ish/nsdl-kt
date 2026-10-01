@@ -23,7 +23,7 @@ object PrinterType : ObjectType {
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
-            PropertySpec("mac", PropertyType.MAC, required = false, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
         ),
         interfaces = listOf(InterfaceSpec("eth0", MediaType.TWISTED_PAIR)),
     )
@@ -37,7 +37,7 @@ object PrinterType : ObjectType {
         builder.service(dhcpClient)
         builder.service(PrintServer(id.child("print-server"), eth0))
 
-        var bootMs = props["bootMs"] as Long
+        val bootMs = props["bootMs"] as Long
         val device = builder.build(bootDuration = { bootMs.milliseconds })
 
         return SimObject(
@@ -45,7 +45,6 @@ object PrinterType : ObjectType {
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
-            configure = { name, value -> if (name == "bootMs") bootMs = value as Long },
         )
     }
 }

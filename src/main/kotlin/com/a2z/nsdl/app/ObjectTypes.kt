@@ -48,8 +48,8 @@ class CreationContext(
 
 /**
  * The objects and relationships created by one [ObjectType.create] call.
- * [power] and [cable] are populated only for object kinds that have them. [configure] applies a
- * change to one of this instance's own mutable properties (by name); types with none can ignore it.
+ * [power] and [cable] are populated only for object kinds that have them. Configuration replaces
+ * the complete object through [ObjectType.create], so volatile state cannot leak between versions.
  */
 data class SimObject(
     val root: Inspectable,
@@ -57,7 +57,6 @@ data class SimObject(
     val power: PowerControl? = null,
     val endpoints: List<LinkEndpoint> = emptyList(),
     val cable: Cable? = null,
-    val configure: (name: String, value: Any?) -> Unit = { _, _ -> },
 )
 
 /**

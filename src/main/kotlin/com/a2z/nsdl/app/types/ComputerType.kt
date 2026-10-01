@@ -23,7 +23,7 @@ object ComputerType : ObjectType {
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
-            PropertySpec("mac", PropertyType.MAC, required = false, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
         ),
         interfaces = listOf(InterfaceSpec("eth0", MediaType.TWISTED_PAIR)),
     )
@@ -35,14 +35,13 @@ object ComputerType : ObjectType {
         builder.service(DhcpClient(dhcpId, eth0, eth0, ctx.random(dhcpId), ctx.events))
         builder.service(PrintClient(id.child("print-client"), eth0))
 
-        var bootMs = props["bootMs"] as Long
+        val bootMs = props["bootMs"] as Long
         val device = builder.build { bootMs.milliseconds }
         return SimObject(
             root = device,
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
-            configure = { name, value -> if (name == "bootMs") bootMs = value as Long },
         )
     }
 }

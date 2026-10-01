@@ -23,6 +23,7 @@ object Cat5CableType : ObjectType {
             PropertySpec(
                 "profile", PropertyType.LINK_PROFILE, required = false,
                 default = LinkProfile.FAST_ETHERNET_100BASE_TX,
+                mutable = true,
                 description = "Declared link profile, e.g. 100BASE-TX",
             ),
         ),

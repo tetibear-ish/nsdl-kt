@@ -31,7 +31,12 @@ class SimulationService(
     private val limits: Limits = Limits(),
     randomSeed: Long = 0L,
 ) {
-    private data class Registered(val type: ObjectType, val obj: SimObject)
+    /** Canonical, fully-coerced creation properties are retained so Configure can rebuild safely. */
+    private data class Registered(
+        val type: ObjectType,
+        var obj: SimObject,
+        var properties: Map<String, Any?>,
+    )
 
     private var nextMacIndex = 1
     private val ctx = CreationContext(
@@ -68,7 +73,7 @@ class SimulationService(
         if (!validated.isValid) return CommandResult.Rejected(validated.errors.toCommandError())
 
         val obj = type.create(id, validated.properties, ctx)
-        objects[id] = Registered(type, obj)
+        objects[id] = Registered(type, obj, validated.properties)
         events.emit(id, EventPayload.ObjectCreated(type.schema.name, type.schema.kind))
         return CommandResult.Ok(obj.root.snapshot())
     }
@@ -186,20 +191,47 @@ class SimulationService(
         if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
         val id = ObjectId(cmd.id)
         val registered = objects[id] ?: return unknownObject(cmd.id)
-        val schema = registered.type.schema.properties.associateBy { it.name }
-
-        val applied = mutableMapOf<String, Any?>()
-        for ((key, raw) in cmd.props) {
-            val spec = schema[key] ?: return rejected(ErrorCode.UNKNOWN_PROPERTY, "unknown property '$key'")
+        if (cmd.props.isEmpty()) return CommandResult.Ok(changed = false)
+        val schemaByName = registered.type.schema.properties.associateBy { it.name }
+        cmd.props.keys.forEach { key ->
+            val spec = schemaByName[key]
+                ?: return rejected(ErrorCode.UNKNOWN_PROPERTY, "unknown property '$key'")
             if (!spec.mutable) return rejected(ErrorCode.IMMUTABLE_PROPERTY, "property '$key' is not mutable")
-            val coerced = raw?.let { coerce(spec.type, it) }
-            if (coerced == null) return rejected(ErrorCode.INVALID_PROPERTY, "invalid value for '$key': $raw")
-            applied[key] = coerced
         }
-        if (applied.isEmpty()) return CommandResult.Ok(changed = false)
 
-        applied.forEach { (key, value) -> registered.obj.configure(key, value) }
-        events.emit(id, EventPayload.ConfigurationChanged(applied))
+        // Validate the complete merged property set before touching power, links, or registry.
+        // This also enforces cross-version defaults consistently with Create.
+        val merged = registered.properties + cmd.props
+        val validated = validateProperties(registered.type.schema.properties, merged)
+        if (!validated.isValid) return CommandResult.Rejected(validated.errors.toCommandError())
+        val changed = cmd.props.keys.associateWith { validated.properties[it] }
+        if (validated.properties == registered.properties) return CommandResult.Ok(changed = false)
+
+        val previousPower = registered.obj.power?.powerState
+        val connections = objects.mapNotNull { (cableId, candidate) ->
+            val endpoints = candidate.obj.cable?.endpoints ?: return@mapNotNull null
+            if (candidate === registered || endpoints.first in registered.obj.endpoints || endpoints.second in registered.obj.endpoints) {
+                Triple(cableId, endpoints.first.id, endpoints.second.id)
+            } else null
+        }
+        val replacement = registered.type.create(id, validated.properties, ctx)
+
+        // Commit only after validation and construction have succeeded. Unplugging first ensures
+        // stale in-flight frames and link callbacks cannot enter the replacement object.
+        connections.forEach { (cableId, _, _) -> objects.getValue(cableId).obj.cable!!.disconnect() }
+        registered.obj.power?.powerOff()
+        registered.obj = replacement
+        registered.properties = validated.properties
+        connections.forEach { (cableId, aId, bId) ->
+            val cable = objects.getValue(cableId).obj.cable!!
+            val a = resolveEndpoint(EndpointRef(aId.value))!!
+            val b = resolveEndpoint(EndpointRef(bId.value))!!
+            cable.connect(a, b)
+        }
+        if (previousPower != null && previousPower != com.a2z.nsdl.model.PowerState.OFF) {
+            replacement.power!!.powerOn()
+        }
+        events.emit(id, EventPayload.ConfigurationChanged(changed))
         return CommandResult.Ok(changed = true)
     }
 

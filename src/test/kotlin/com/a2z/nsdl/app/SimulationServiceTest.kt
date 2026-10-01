@@ -63,6 +63,9 @@ class SimulationServiceTest {
         return (result as CommandResult.Rejected).error
     }
 
+    private fun snapshot(id: String): ObjectSnapshot =
+        ok(service.handle(Command.Inspect(id))).data as ObjectSnapshot
+
     @Suppress("UNCHECKED_CAST")
     private fun graphAnalysis(id: String): Map<String, Any?> =
         ok(service.handle(Command.AnalyzeGraph(id))).data as Map<String, Any?>
@@ -273,10 +276,15 @@ class SimulationServiceTest {
     // -- Configure --
 
     @Test
-    fun `configuring an immutable property is rejected as IMMUTABLE_PROPERTY`() {
+    fun `configuration validation is atomic and leaves the running object untouched`() {
         ok(create("printer1", "printer"))
-        val error = rejected(service.handle(Command.Configure("printer1", mapOf("mac" to "02:00:00:00:00:09"))))
-        assertEquals(ErrorCode.IMMUTABLE_PROPERTY, error.code)
+        ok(service.handle(Command.PowerOn("printer1")))
+        scheduler.advanceBy(3.seconds)
+
+        val error = rejected(service.handle(Command.Configure("printer1", mapOf("bootMs" to "bad", "mac" to "02:00:00:00:00:09"))))
+        assertEquals(ErrorCode.INVALID_PROPERTY, error.code)
+        assertEquals("ON", snapshot("printer1").state["power"])
+        assertEquals(3000L, snapshot("printer1").state["bootMs"])
     }
 
     @Test
@@ -287,16 +295,68 @@ class SimulationServiceTest {
     }
 
     @Test
-    fun `a mutable property change emits ConfigurationChanged and applies at the next power-on`() {
+    fun `configuring a powered device replaces it and begins a fresh boot`() {
         ok(create("printer1", "printer", mapOf("bootMs" to 3000L)))
+        ok(service.handle(Command.PowerOn("printer1")))
+        scheduler.advanceBy(3.seconds)
 
         val result = ok(service.handle(Command.Configure("printer1", mapOf("bootMs" to 500L))))
         assertTrue(result.changed)
         assertEquals(listOf(ConfigurationChanged(mapOf("bootMs" to 500L))), sink.of<ConfigurationChanged>(ObjectId("printer1")))
+        assertEquals("BOOTING", snapshot("printer1").state["power"])
 
+        scheduler.advanceBy(500.milliseconds)
+        assertEquals("ON", snapshot("printer1").state["power"])
+        assertEquals(2, sink.of<BootCompleted>(ObjectId("printer1")).size, "replacement boots in 500ms")
+    }
+
+    @Test
+    fun `configuring an off device preserves its off state`() {
+        ok(create("printer1", "printer"))
+
+        ok(service.handle(Command.Configure("printer1", mapOf("bootMs" to 25L))))
+
+        assertEquals("OFF", snapshot("printer1").state["power"])
+        scheduler.advanceBy(1.seconds)
+        assertTrue(sink.of<BootCompleted>(ObjectId("printer1")).isEmpty())
+    }
+
+    @Test
+    fun `reconfiguring while booting cancels the old generation timer`() {
+        ok(create("printer1", "printer", mapOf("bootMs" to 1000L)))
         ok(service.handle(Command.PowerOn("printer1")))
         scheduler.advanceBy(500.milliseconds)
-        assertEquals(1, sink.of<BootCompleted>(ObjectId("printer1")).size, "500ms boot, not the original 3000ms")
+
+        ok(service.handle(Command.Configure("printer1", mapOf("bootMs" to 2000L))))
+        scheduler.advanceBy(500.milliseconds)
+        assertEquals("BOOTING", snapshot("printer1").state["power"], "old boot timer cannot complete the replacement")
+
+        scheduler.advanceBy(1500.milliseconds)
+        assertEquals("ON", snapshot("printer1").state["power"])
+    }
+
+    @Test
+    fun `reconfiguration preserves compatible cables while clearing DHCP and switch volatile state`() {
+        registry.register(EthernetSwitchType)
+        ok(create("printer1", "printer", mapOf("bootMs" to 10L)))
+        ok(create("switch1", "ethernet-switch"))
+        ok(create("gateway1", "gateway"))
+        connect("cable1", "printer1.eth0", "switch1.port1")
+        connect("cable2", "gateway1.eth0", "switch1.port2")
+        listOf("printer1", "switch1", "gateway1").forEach { ok(service.handle(Command.PowerOn(it))) }
+        scheduler.advanceBy(5.seconds)
+        assertTrue((snapshot("printer1.eth0").state["ipv4"] as Map<*, *>)["address"] != null)
+        assertTrue((snapshot("switch1").state["learnedAddresses"] as List<*>).isNotEmpty())
+
+        ok(service.handle(Command.Configure("printer1", mapOf("bootMs" to 20L))))
+        ok(service.handle(Command.Configure("switch1", mapOf("bootMs" to 10L))))
+
+        assertEquals(null, snapshot("printer1.eth0").state["ipv4"])
+        assertEquals(emptyList<Any>(), snapshot("switch1").state["learnedAddresses"])
+        assertEquals("BOOTING", snapshot("printer1").state["power"])
+        assertEquals("BOOTING", snapshot("switch1").state["power"])
+        assertEquals(listOf(ObjectId("printer1.eth0"), ObjectId("switch1.port1")), snapshot("cable1").relations["endpoints"])
+        assertEquals(listOf(ObjectId("gateway1.eth0"), ObjectId("switch1.port2")), snapshot("cable2").relations["endpoints"])
     }
 
     // -- Advance --
