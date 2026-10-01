@@ -204,26 +204,38 @@ class HttpSimulationServerTest {
         val base = "http://127.0.0.1:${server.port}"
 
         val presence = URI("$base/api/presence?clientId=alice").toURL().openConnection() as HttpURLConnection
-        presence.readTimeout = 2_000
+        presence.readTimeout = 3_000
         val reader = presence.inputStream.bufferedReader()
         assertEquals(200, presence.responseCode)
-        assertTrue(reader.readLine().startsWith(":"))
-        reader.readLine() // blank line terminating the SSE comment
-        val roster = reader.readLine()
+        assertTrue(reader.readLine().startsWith(":"), "an SSE comment confirms the connection")
+
+        val roster = nextRosterLine(reader)
         assertTrue(roster.contains("alice"), "the initial roster includes the connecting client itself")
 
         val second = URI("$base/api/presence?clientId=bob").toURL().openConnection() as HttpURLConnection
-        second.readTimeout = 2_000
-        val secondReader = second.inputStream.bufferedReader()
-        secondReader.readLine()
-        secondReader.readLine()
+        second.readTimeout = 3_000
+        second.inputStream.bufferedReader() // establish bob's own connection; its content is not asserted here
 
-        reader.readLine() // blank line terminating the first roster push
-        val updated = reader.readLine()
+        val updated = nextRosterLine(reader)
         assertTrue(updated.contains("bob"), "alice's stream is notified when bob joins")
 
         second.disconnect()
+
+        // Bob's idle stream still pings periodically, so its next write discovers the broken pipe
+        // and leaves the roster -- departure is noticed without alice's own connection changing at all.
+        val afterDeparture = nextRosterLine(reader)
+        assertFalse(afterDeparture.contains("bob"), "alice's stream is notified once bob disconnects")
+        assertTrue(afterDeparture.contains("alice"))
+
         presence.disconnect()
+    }
+
+    /** Reads lines from an SSE stream until a `data:` line (skipping blank lines and `: ping` comments). */
+    private fun nextRosterLine(reader: java.io.BufferedReader): String {
+        while (true) {
+            val line = reader.readLine() ?: throw AssertionError("presence stream closed unexpectedly")
+            if (line.startsWith("data:")) return line
+        }
     }
 
     private fun post(client: HttpClient, url: String, body: String): HttpResponse<String> = client.send(

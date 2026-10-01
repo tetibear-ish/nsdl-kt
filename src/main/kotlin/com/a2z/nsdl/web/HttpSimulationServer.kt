@@ -261,13 +261,18 @@ class HttpSimulationServer(
             output.flush()
             while (!Thread.currentThread().isInterrupted) {
                 val roster = latest.get()
+                // An unchanged roster still writes a ping comment, not just a real update: an idle
+                // connection otherwise never attempts a write, so a client that vanished without a
+                // clean close (closed tab, network drop) would never be noticed and never leave the
+                // roster. Pinging means a broken pipe surfaces as an IOException within one interval.
                 if (roster != lastSent) {
                     output.write("data: ${Json.write(mapOf("type" to "roster", "clients" to roster.sorted()))}\n\n")
-                    output.flush()
                     lastSent = roster
                 } else {
-                    Thread.sleep(50)
+                    output.write(": ping\n\n")
                 }
+                output.flush()
+                Thread.sleep(PRESENCE_POLL_INTERVAL_MS)
             }
         } catch (_: IOException) {
             // Browser disconnected.
@@ -324,5 +329,9 @@ class HttpSimulationServer(
         responseHeaders.set("X-Content-Type-Options", "nosniff")
         sendResponseHeaders(status, body.size.toLong())
         responseBody.use { it.write(body) }
+    }
+
+    private companion object {
+        const val PRESENCE_POLL_INTERVAL_MS = 50L
     }
 }
