@@ -779,6 +779,7 @@ export function App({ transport = defaultTransport }: { transport?: SimulationTr
       </aside>
       </div>
       {quickAdd && <nav className="quick-add" style={{ left: quickAdd.x, top: quickAdd.y }} aria-label="Add network object">
+        <button onClick={() => { void quickCreate("computer"); }}>+ Computer</button>
         <button onClick={() => { void quickCreate("printer"); }}>+ Printer</button>
         <button onClick={() => { void quickCreate("gateway"); }}>+ Gateway</button>
         <button onClick={() => { void quickCreate("ethernet-switch"); }}>+ Switch</button>
