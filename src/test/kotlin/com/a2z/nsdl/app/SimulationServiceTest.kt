@@ -104,6 +104,19 @@ class SimulationServiceTest {
     }
 
     @Test
+    fun `automatically assigned mac addresses are random local unicast addresses`() {
+        ok(create("printer1", "printer"))
+        ok(create("printer2", "printer"))
+
+        val first = (snapshot("printer1.eth0").state["mac"] as String)
+        val second = (snapshot("printer2.eth0").state["mac"] as String)
+
+        assertTrue(first != second)
+        assertTrue(first.startsWith("02:") || first.startsWith("06:") || first.startsWith("0a:") || first.startsWith("0e:"))
+        assertTrue(second.startsWith("02:") || second.startsWith("06:") || second.startsWith("0a:") || second.startsWith("0e:"))
+    }
+
+    @Test
     fun `graph analysis treats a disconnected device as an isolated component`() {
         ok(create("printer1", "printer"))
 

@@ -38,14 +38,24 @@ class SimulationService(
         var properties: Map<String, Any?>,
     )
 
-    private var nextMacIndex = 1
+    private val macRandom = Random(randomSeed xor 0x4D_41_43_00L)
+    private val allocatedMacs = mutableSetOf<MacAddress>()
     private val ctx = CreationContext(
         scheduler = scheduler,
         events = events,
         random = { id -> Random(randomSeed xor id.hashCode().toLong()) },
-        nextMac = { MacAddress.local(nextMacIndex++) },
+        nextMac = { allocateMac() },
     )
     private val objects = mutableMapOf<ObjectId, Registered>()
+
+    /** Allocate a random locally-administered unicast MAC, avoiding collisions in this simulation. */
+    private fun allocateMac(): MacAddress {
+        while (true) {
+            val bits = (macRandom.nextLong() and 0x0000_00FF_FFFF_FFFFL) or 0x02_00_0000_0000L
+            val mac = MacAddress(bits)
+            if (allocatedMacs.add(mac)) return mac
+        }
+    }
 
     fun handle(command: Command): CommandResult = when (command) {
         is Command.Create -> handleCreate(command)
