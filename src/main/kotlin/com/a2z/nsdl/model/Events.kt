@@ -80,4 +80,8 @@ enum class DropReason {
     NOT_FOR_US,
     /** No listener is bound for the destination protocol/port, or the IP destination is not ours. */
     NO_LISTENER,
+    /** The next hop's hardware address never resolved (no ARP reply) before the packet was evicted. */
+    ARP_UNRESOLVED,
+    /** The destination is off-subnet and no router is configured. */
+    NO_ROUTE,
 }

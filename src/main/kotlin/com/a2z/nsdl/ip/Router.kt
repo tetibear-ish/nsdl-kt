@@ -15,7 +15,6 @@ import com.a2z.nsdl.net.EthernetFrame
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.Ipv4Config
 import com.a2z.nsdl.net.Ipv4Packet
-import com.a2z.nsdl.net.MacAddress
 
 /**
  * A composable multi-interface IPv4 router: one [Ipv4Stack] per attached [FramePort], a shared
@@ -25,8 +24,8 @@ import com.a2z.nsdl.net.MacAddress
  * Forwarding is driven entirely by [Ipv4Stack]'s [Ipv4Forwarder] hook: each interface's own stack
  * still handles traffic addressed to its own configuration (so a bound [com.a2z.nsdl.ip.UdpTransport],
  * such as a DHCP server, works exactly as on a single-interface host); anything else is handed here.
- * There is no ARP in this model, so a forwarded frame always carries a broadcast destination MAC;
- * the receiving interface's own IPv4 address match is what actually delivers it (or doesn't).
+ * A forwarded packet leaves through the egress interface's stack, which resolves the route's next hop
+ * (or, for a directly connected route, the destination itself) with ARP.
  *
  * Router has no lifecycle of its own: it has no per-generation timers, and forwarding naturally stops
  * when an interface is disabled (an [FramePort.send] on a disabled port already reports
@@ -44,7 +43,6 @@ class Router(
     private val stacksByInterface: Map<ObjectId, Ipv4Stack> = interfaces.associate { port ->
         port.id to Ipv4Stack(port, events) { frame, packet -> forward(port.id, frame, packet) }
     }
-    private val portsByInterface: Map<ObjectId, FramePort> = interfaces.associateBy { it.id }
     private val staticRoutes = mutableListOf<Route>()
     private val decisions = mutableListOf<DecisionRecord>()
     private var nextDecision = 1L
@@ -86,7 +84,7 @@ class Router(
             record(DecisionAction.DROP, "no matching route", ingressId, mapOf("destination" to packet.dst.toString()))
             return
         }
-        val egress = portsByInterface.getValue(route.interfaceId)
+        val egress = stacksByInterface.getValue(route.interfaceId)
         val forwardedPacket = packet.copy(ttl = packet.ttl - 1)
         val attributes = mapOf(
             "destination" to packet.dst.toString(),
@@ -96,7 +94,7 @@ class Router(
             "ttlBefore" to packet.ttl.toString(),
             "ttlAfter" to forwardedPacket.ttl.toString(),
         )
-        val sent = egress.send(EthernetFrame(egress.mac, MacAddress.BROADCAST, forwardedPacket))
+        val sent = egress.sendPacket(forwardedPacket, nextHop = route.nextHop ?: packet.dst)
         if (sent) {
             record(DecisionAction.FORWARD, "forwarded via ${route.kind.name.lowercase()} route", ingressId, attributes)
         } else {

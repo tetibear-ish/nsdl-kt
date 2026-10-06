@@ -9,6 +9,8 @@ data class MacAddress(val bits: Long) {
 
     companion object {
         val BROADCAST = MacAddress(0xFFFF_FFFF_FFFFL)
+        /** The all-zero address: "not yet known", e.g. the target hardware address of an ARP request. */
+        val ZERO = MacAddress(0L)
         private val FORMAT = Regex("([0-9a-fA-F]{2}:){5}[0-9a-fA-F]{2}")
         fun parse(text: String): MacAddress {
             require(text.matches(FORMAT)) { "invalid MAC address '$text'" }

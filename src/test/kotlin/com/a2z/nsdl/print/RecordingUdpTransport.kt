@@ -14,7 +14,7 @@ import com.a2z.nsdl.net.UdpDatagram
 import com.a2z.nsdl.net.UdpPayload
 
 class RecordingUdpTransport : UdpTransport, IpConfigurable {
-    data class Sent(val srcPort: Int, val dst: Ipv4Address, val dstPort: Int, val payload: UdpPayload, val dstMac: MacAddress)
+    data class Sent(val srcPort: Int, val dst: Ipv4Address, val dstPort: Int, val payload: UdpPayload, val dstMac: MacAddress?)
 
     override val interfaceId = ObjectId("test.eth0")
     override val hardwareAddress = MacAddress.local(99)
@@ -28,7 +28,7 @@ class RecordingUdpTransport : UdpTransport, IpConfigurable {
     private val handlers = mutableMapOf<Int, UdpHandler>()
 
     override fun addLinkListener(listener: (Boolean) -> Unit) = Unit
-    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress, ttl: Int): Boolean {
+    override fun sendUdp(srcPort: Int, dst: Ipv4Address, dstPort: Int, payload: UdpPayload, dstMac: MacAddress?, ttl: Int): Boolean {
         sent += Sent(srcPort, dst, dstPort, payload, dstMac)
         return true
     }

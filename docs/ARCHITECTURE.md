@@ -15,7 +15,7 @@ sim <- model/net <- link <- ip <- dhcp/print/device <- app <- nsdl/events/runtim
 - `sim` owns deterministic virtual time, scheduled work, and cancellation.
 - `model` and `net` define identity, snapshots, events, addresses, and packets.
 - `link` models Ethernet interfaces and passive point-to-point cables.
-- `ip` provides the minimal IPv4/UDP host stack.
+- `ip` provides the minimal IPv4/UDP host stack, ARP, and routing.
 - `dhcp`, `print`, and `device` provide protocol/application state machines and reusable host lifecycle.
 - `app` validates types and commands before changing simulation state.
 - `nsdl` defines topology input; `events` sequences retained event history;
@@ -56,7 +56,7 @@ also provide a `SimObject.configure` callback.
 The CAT5 object explicitly selects the `100BASE-TX` profile. It is a
 point-to-point, full-duplex link with 1 ms propagation delay. The nominal speed
 is informational: there is no serialization delay, loss, collision, electrical
-behavior, duplex negotiation, or ARP.
+behavior, or duplex negotiation.
 
 A link is operational only when its cable has two endpoints and both interfaces
 are enabled. Powering a device off leaves the cable attached but takes the link
@@ -84,12 +84,25 @@ process boundary: commands execute synchronously against a browser-local
 `SimulationService`. It is useful for offline, single-user experimentation;
 the server-backed mode is preferred for shared or persistent sessions.
 
+## Address resolution
+
+Each `Ipv4Stack` resolves unicast next hops with ARP: the destination when it
+is on the local subnet, otherwise the configured router (a router forwarding a
+packet uses its route's next hop). The first packet to an unknown neighbor is
+queued and a broadcast `who-has` request is sent; the owner replies unicast and
+learns the requester's mapping, and queued packets are then sent. Requests for
+other addresses are ignored silently. There are no ARP timers: a queue holds at
+most 8 packets per next hop, and overflowing it drops the oldest packet as
+`ARP_UNRESOLVED` and repeats the request. An off-subnet destination with no
+router is dropped as `NO_ROUTE`. Callers may still pass an explicit MAC, which
+bypasses resolution. Gratuitous ARP, proxy ARP, and cache aging are deferred.
+
 ## Persistent and volatile state
 
 Persistent object configuration, such as boot time, MAC address, static IP,
 and DHCP pool, survives a power cycle. DHCP client state and acquired network
-configuration, DHCP server offers and leases, and operational link state are
-cleared at power-off.
+configuration, DHCP server offers and leases, ARP caches, and operational link
+state are cleared at power-off.
 
 ## DHCP subset
 

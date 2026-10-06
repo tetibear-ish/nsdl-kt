@@ -2,7 +2,8 @@ package com.a2z.nsdl.net
 
 /*
  * Behavioral message model: immutable typed layers, not wire-compatible byte serialization.
- * Ethernet frame -> IPv4 packet -> UDP datagram -> application payload (e.g. DHCP).
+ * Ethernet frame -> IPv4 packet -> UDP datagram -> application payload (e.g. DHCP),
+ * or Ethernet frame -> ARP packet.
  */
 
 sealed interface EthernetPayload {
@@ -13,6 +14,26 @@ sealed interface EthernetPayload {
 sealed interface Ipv4Payload {
     val protocolNumber: Int
     fun describe(): String
+}
+
+enum class ArpOperation { REQUEST, REPLY }
+
+/**
+ * Address Resolution Protocol (RFC 826) for IPv4 over Ethernet: "who has [targetIp]?" is broadcast,
+ * and the owner answers with its hardware address. [targetMac] is [MacAddress.ZERO] in a request.
+ */
+data class ArpPacket(
+    val operation: ArpOperation,
+    val senderMac: MacAddress,
+    val senderIp: Ipv4Address,
+    val targetMac: MacAddress,
+    val targetIp: Ipv4Address,
+) : EthernetPayload {
+    override val etherType get() = 0x0806
+    override fun describe() = when (operation) {
+        ArpOperation.REQUEST -> "ARP who-has $targetIp tell $senderIp"
+        ArpOperation.REPLY -> "ARP $senderIp is-at $senderMac"
+    }
 }
 
 /** Application payload carried in a UDP datagram. */
@@ -59,4 +80,10 @@ fun EthernetFrame.decodeEnvelope(): Map<String, Any?> = when (val p = payload) {
             is UdpDatagram -> base + mapOf("protocol" to "UDP", "sourcePort" to inner.srcPort, "destPort" to inner.dstPort)
         }
     }
+    is ArpPacket -> mapOf(
+        "protocol" to "ARP",
+        "sourceIp" to p.senderIp.toString(),
+        "destIp" to p.targetIp.toString(),
+        "arp" to mapOf("operation" to p.operation.name, "senderMac" to p.senderMac.toString(), "targetMac" to p.targetMac.toString()),
+    )
 }
