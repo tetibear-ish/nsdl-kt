@@ -33,7 +33,7 @@ object PrinterType : ObjectType {
         val mac = props["mac"] as? MacAddress ?: ctx.nextMac()
         val eth0 = builder.ethernet("eth0", mac)
         val clientId = id.child("dhcp-client")
-        val dhcpClient = DhcpClient(clientId, eth0, eth0, ctx.random(clientId), ctx.events)
+        val dhcpClient = DhcpClient(clientId, eth0, eth0, ctx.random(clientId), ctx.events, hostname = id.value)
         builder.service(dhcpClient)
         builder.service(PrintServer(id.child("print-server"), eth0))
 

@@ -57,6 +57,8 @@ class DhcpClient(
     private val random: Random,
     private val events: EventSink,
     private val timers: DhcpClientTimers = DhcpClientTimers(),
+    /** Sent as option 12 so the server (and a name service fed by it) knows this host by name. */
+    private val hostname: String? = null,
 ) : DeviceService {
     var state = DhcpClientState.STOPPED
         private set
@@ -122,7 +124,7 @@ class DhcpClient(
     }
 
     private fun sendDiscover() {
-        send(DhcpMessage(BootOp.REQUEST, DhcpMessageType.DISCOVER, xid, transport.hardwareAddress))
+        send(DhcpMessage(BootOp.REQUEST, DhcpMessageType.DISCOVER, xid, transport.hardwareAddress, hostname = hostname))
         arm(backoff(attempts)) { attempts++; sendDiscover() }
     }
 
@@ -130,7 +132,7 @@ class DhcpClient(
         send(
             DhcpMessage(
                 BootOp.REQUEST, DhcpMessageType.REQUEST, xid, transport.hardwareAddress,
-                requestedIp = offeredIp, serverId = selectedServer,
+                requestedIp = offeredIp, serverId = selectedServer, hostname = hostname,
             ),
         )
         arm(backoff(attempts)) {
@@ -228,6 +230,7 @@ class DhcpClient(
                 source = ConfigSource.DHCP,
                 leaseSeconds = ack.leaseSeconds,
                 server = ack.serverId,
+                dnsServer = ack.dnsServer,
             ),
         )
         offeredIp = ack.yiaddr

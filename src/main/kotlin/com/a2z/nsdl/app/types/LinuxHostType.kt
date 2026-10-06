@@ -34,7 +34,7 @@ object LinuxHostType : ObjectType {
         val builder = HostBuilder(id, schema.name, ctx.scheduler, ctx.events)
         val mac = props["mac"] as? MacAddress ?: ctx.nextMac()
         val eth0 = builder.ethernet("eth0", mac)
-        builder.service(DhcpClient(id.child("dhcp-client"), eth0, eth0, ctx.random(id.child("dhcp-client")), ctx.events))
+        builder.service(DhcpClient(id.child("dhcp-client"), eth0, eth0, ctx.random(id.child("dhcp-client")), ctx.events, hostname = id.value))
         builder.service(SshServer(id.child("ssh-server"), eth0, username = props["username"] as String, password = props["password"] as String))
 
         val bootMs = props["bootMs"] as Long

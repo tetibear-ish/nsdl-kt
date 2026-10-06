@@ -234,4 +234,5 @@ fun Ipv4Config.toState(): Map<String, Any?> = mapOf(
     "source" to source.name,
     "leaseSeconds" to leaseSeconds,
     "server" to server?.toString(),
+    "dnsServer" to dnsServer?.toString(),
 )

@@ -29,6 +29,8 @@ kotlin {
                 "../src/main/kotlin/com/a2z/nsdl/dhcp",
                 "../src/main/kotlin/com/a2z/nsdl/print",
                 "../src/main/kotlin/com/a2z/nsdl/ssh",
+                "../src/main/kotlin/com/a2z/nsdl/dns",
+                "../src/main/kotlin/com/a2z/nsdl/http",
                 "../src/main/kotlin/com/a2z/nsdl/device",
                 "../src/main/kotlin/com/a2z/nsdl/app",
                 "../src/main/kotlin/com/a2z/nsdl/events",

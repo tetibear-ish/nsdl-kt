@@ -11,13 +11,14 @@ import com.a2z.nsdl.app.types.ComputerType
 import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.PrinterType
+import com.a2z.nsdl.app.types.WebServerType
 import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.events.EventRecord
 import com.a2z.nsdl.ipc.json.Json
 import com.a2z.nsdl.link.LinkProfile
-import com.a2z.nsdl.model.ObjectSnapshot
 import com.a2z.nsdl.model.EventPayload
+import com.a2z.nsdl.model.ObjectSnapshot
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.sim.VirtualScheduler
@@ -120,6 +121,7 @@ class WebSimulation(seed: Long = 0L) {
             register(DhcpServerHostType)
             register(EthernetSwitchType)
             register(Cat5CableType)
+            register(WebServerType)
         }
         return SimulationService(scheduler, events, registry, randomSeed = seed)
     }

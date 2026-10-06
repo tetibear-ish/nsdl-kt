@@ -51,4 +51,6 @@ data class Ipv4Config(
     val source: ConfigSource,
     val leaseSeconds: Long? = null,
     val server: Ipv4Address? = null,
+    /** Name server to query for host names (DHCP option 6). */
+    val dnsServer: Ipv4Address? = null,
 )

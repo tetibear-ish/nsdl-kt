@@ -9,14 +9,15 @@ electrical signaling, or host networking.
 Dependencies point inward toward the simulation core:
 
 ```text
-sim <- model/net <- link <- ip <- dhcp/print/device <- app <- nsdl/events/runtime <- ipc <- Composition/Main
+sim <- model/net <- link <- ip <- dhcp/dns/http/print/ssh/device <- app <- nsdl/events/runtime <- ipc <- Composition/Main
 ```
 
 - `sim` owns deterministic virtual time, scheduled work, and cancellation.
 - `model` and `net` define identity, snapshots, events, addresses, and packets.
 - `link` models Ethernet interfaces and passive point-to-point cables.
 - `ip` provides the minimal IPv4/UDP host stack, ARP, and routing.
-- `dhcp`, `print`, and `device` provide protocol/application state machines and reusable host lifecycle.
+- `dhcp`, `dns`, `http`, `print`, `ssh`, and `device` provide protocol state
+  machines and reusable host lifecycle. This is the network layer.
 - `app` validates types and commands before changing simulation state.
 - `nsdl` defines topology input; `events` sequences retained event history;
   `runtime` confines mutations to one thread and journals accepted input.
@@ -97,12 +98,29 @@ most 8 packets per next hop, and overflowing it drops the oldest packet as
 router is dropped as `NO_ROUTE`. Callers may still pass an explicit MAC, which
 bypasses resolution. Gratuitous ARP, proxy ARP, and cache aging are deferred.
 
+## Names and the web
+
+Hosts announce their object id as a DHCP host name (option 12). The `gateway`
+and a `routed-gateway` with a DHCP pool run a DNS server that answers for its
+own id (a static record) and for every bound, named lease (dynamic records that
+disappear when the lease expires or the gateway stops); clients are offered it
+as their name server (option 6). A workstation's DNS resolver caches positive
+answers, shares concurrent lookups, and retries an unanswered query twice at
+2-second intervals. The teaching DNS has one question and one A answer: no
+zones, other record types, recursion, or TTLs.
+
+The teaching web protocol is a single `GET` and a response carrying a whole page
+(a title and plain text) on UDP port 80. The `web-server` device serves `/` and
+`/about`; other paths are a 404 page. The web client waits 5 seconds for a
+response and does not retransmit.
+
 ## Persistent and volatile state
 
 Persistent object configuration, such as boot time, MAC address, static IP,
-and DHCP pool, survives a power cycle. DHCP client state and acquired network
-configuration, DHCP server offers and leases, ARP caches, and operational link
-state are cleared at power-off.
+DHCP pool, and a DNS server's static records, survives a power cycle. DHCP
+client state and acquired network configuration, DHCP server offers and leases,
+dynamic DNS records, ARP caches, resolver caches, and
+operational link state are cleared at power-off.
 
 ## DHCP subset
 
@@ -117,6 +135,10 @@ back off to 64 seconds. Four unanswered REQUESTs or a NAK restart acquisition
 with a new transaction id. Per-object randomness derives from the runtime seed
 and object id, making a journal replay deterministic for the same seed.
 
+Besides the subnet mask and router, servers offer a name server (option 6), and
+clients send a host name (option 12) that the server records with the lease.
+
 Renewal, rebinding, lease expiry, DECLINE, conflict detection, RELEASE, INFORM,
 relays, INIT-REBOOT, client identifier option 61, and other DHCP options are
-deferred. This is deliberately not full RFC 2131 compliance.
+deferred. This is deliberately not full RFC 2131 compliance. Without RELEASE, a
+host that powers off keeps its lease (and its DNS name) until the lease expires.

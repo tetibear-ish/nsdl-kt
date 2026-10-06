@@ -7,6 +7,7 @@ import com.a2z.nsdl.app.types.DhcpServerHostType
 import com.a2z.nsdl.app.types.EthernetSwitchType
 import com.a2z.nsdl.app.types.LinuxHostType
 import com.a2z.nsdl.app.types.PrinterType
+import com.a2z.nsdl.app.types.WebServerType
 import com.a2z.nsdl.app.types.RoutedGatewayType
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.runtime.SimulationRuntime
@@ -28,6 +29,7 @@ class Composition(randomSeed: Long = System.nanoTime()) {
         register(EthernetSwitchType)
         register(Cat5CableType)
         register(LinuxHostType)
+        register(WebServerType)
     }
     val runtime = SimulationRuntime(scheduler, eventHub, registry, randomSeed = randomSeed)
 

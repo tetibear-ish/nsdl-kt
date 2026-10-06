@@ -12,7 +12,8 @@ enum class DhcpMessageType { DISCOVER, OFFER, REQUEST, DECLINE, ACK, NAK, RELEAS
 
 /**
  * Typed DHCPv4 message (RFC 2131 section 2), carrying only the fields and options this simulation uses:
- * option 50 [requestedIp], 51 [leaseSeconds], 54 [serverId], 1 [subnetMask], 3 [router].
+ * option 50 [requestedIp], 51 [leaseSeconds], 54 [serverId], 1 [subnetMask], 3 [router],
+ * 6 [dnsServer], and 12 [hostname] (the name a client asks to be known by).
  * The client is identified by [chaddr]; option 61 (client identifier) is not modeled.
  */
 data class DhcpMessage(
@@ -30,12 +31,15 @@ data class DhcpMessage(
     val leaseSeconds: Long? = null,
     val subnetMask: Ipv4Address? = null,
     val router: Ipv4Address? = null,
+    val dnsServer: Ipv4Address? = null,
+    val hostname: String? = null,
 ) : UdpPayload {
     override fun describe(): String = buildString {
         append("DHCP").append(type).append(" xid=0x").append(hex(xid.toLong(), 8)).append(" chaddr=").append(chaddr)
         if (!yiaddr.isUnspecified) append(" yiaddr=").append(yiaddr)
         requestedIp?.let { append(" requested=").append(it) }
         serverId?.let { append(" server=").append(it) }
+        hostname?.let { append(" hostname=").append(it) }
     }
 
     /**

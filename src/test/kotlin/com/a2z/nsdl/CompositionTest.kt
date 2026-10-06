@@ -32,7 +32,7 @@ class CompositionTest {
         assertTrue(result.result is CommandResult.Ok)
         @Suppress("UNCHECKED_CAST")
         val names = ((result.result as CommandResult.Ok).data as List<ObjectTypeSchema>).map { it.name }.toSet()
-        assertEquals(setOf("computer", "printer", "gateway", "routed-gateway", "ethernet-switch", "cat5-cable", "linux-host"), names)
+        assertEquals(setOf("computer", "printer", "gateway", "routed-gateway", "ethernet-switch", "cat5-cable", "linux-host", "web-server"), names)
     }
 
     @Test

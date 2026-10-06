@@ -10,6 +10,7 @@ import com.a2z.nsdl.app.SimObject
 import com.a2z.nsdl.device.HostBuilder
 import com.a2z.nsdl.dhcp.DhcpPool
 import com.a2z.nsdl.dhcp.DhcpServer
+import com.a2z.nsdl.dns.DnsServer
 import com.a2z.nsdl.ip.Route
 import com.a2z.nsdl.ip.Router
 import com.a2z.nsdl.link.MediaType
@@ -30,7 +31,8 @@ import kotlin.time.Duration.Companion.milliseconds
  * property at its default (null/unconfigured) -- the wan interface then exists as a connectable port
  * with no address, no connected route and no service bound to it.
  *
- * - DHCP is optional and bound only to the lan interface's transport ([poolStart]/[poolEnd] both set).
+ * - DHCP is optional and bound only to the lan interface's transport ([poolStart]/[poolEnd] both set);
+ *   a DNS server for the lan comes with it, offered to clients and fed by their named leases.
  * - The wan interface is optional ([wanAddress] unset leaves it unconfigured).
  * - A default route out wan is installed only when both [wanAddress] and [wanGateway] are set.
  */
@@ -73,8 +75,11 @@ object RoutedGatewayType : ObjectType {
         val poolStart = props["poolStart"] as? Ipv4Address
         val poolEnd = props["poolEnd"] as? Ipv4Address
         if (poolStart != null && poolEnd != null) {
-            val pool = DhcpPool(poolStart, poolEnd, lanSubnetMask, router = lanAddress, leaseSeconds = props["leaseSeconds"] as Long)
-            builder.service(DhcpServer(id.child("dhcp-server"), router.transport(lan.id), pool, ctx.events))
+            val lanTransport = router.transport(lan.id)
+            val pool = DhcpPool(poolStart, poolEnd, lanSubnetMask, router = lanAddress, leaseSeconds = props["leaseSeconds"] as Long, dnsServer = lanAddress)
+            val dns = DnsServer(id.child("dns-server"), lanTransport, ctx.events).apply { addStatic(id.value, lanAddress) }
+            builder.service(dns)
+            builder.service(DhcpServer(id.child("dhcp-server"), lanTransport, pool, ctx.events, LeasesToDns(dns)))
         }
 
         val device = builder.build { (props["bootMs"] as Long).milliseconds }

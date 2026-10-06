@@ -20,8 +20,20 @@ data class DhcpPool(
     val subnetMask: Ipv4Address,
     val router: Ipv4Address?,
     val leaseSeconds: Long,
+    /** Name server offered to clients (option 6); null offers none. */
+    val dnsServer: Ipv4Address? = null,
 ) {
     val addresses: List<Ipv4Address> get() = (start.bits..end.bits).map(::Ipv4Address)
+}
+
+/**
+ * Told when a lease that carries a client host name (option 12) becomes bound or goes away, so a
+ * name service can track which name is at which address. Releases happen on lease expiry and when
+ * the server stops.
+ */
+interface DhcpLeaseObserver {
+    fun leaseBound(hostname: String, address: Ipv4Address)
+    fun leaseReleased(hostname: String, address: Ipv4Address)
 }
 
 /**
@@ -40,9 +52,10 @@ class DhcpServer(
     private val transport: UdpTransport,
     val pool: DhcpPool,
     private val events: EventSink,
+    private val leaseObserver: DhcpLeaseObserver? = null,
 ) : DeviceService {
     private enum class BindingState { OFFERED, BOUND }
-    private data class Binding(val address: Ipv4Address, val state: BindingState)
+    private data class Binding(val address: Ipv4Address, val state: BindingState, val hostname: String? = null)
 
     private val bindings = linkedMapOf<MacAddress, Binding>()
     private val expiryTimers = mutableMapOf<MacAddress, Cancellable>()
@@ -65,7 +78,9 @@ class DhcpServer(
         expiryTimers.values.forEach { it.cancel() }
         expiryTimers.clear()
         leaseExpiresAtMs.clear()
+        val released = bindings.values.toList()
         bindings.clear()
+        released.forEach(::notifyReleased)
     }
 
     private fun onDatagram(d: ReceivedDatagram) {
@@ -93,7 +108,12 @@ class DhcpServer(
     private fun request(msg: DhcpMessage, self: Ipv4Address) {
         val binding = bindings[msg.chaddr]
         if (binding != null && msg.requestedIp == binding.address) {
-            setBinding(msg.chaddr, binding.copy(state = BindingState.BOUND))
+            val bound = binding.copy(state = BindingState.BOUND, hostname = msg.hostname ?: binding.hostname)
+            setBinding(msg.chaddr, bound)
+            if (binding.state != BindingState.BOUND || binding.hostname != bound.hostname) {
+                if (binding.state == BindingState.BOUND) notifyReleased(binding)
+                bound.hostname?.let { leaseObserver?.leaseBound(it, bound.address) }
+            }
             scheduleExpiry(msg.chaddr)
             reply(msg, DhcpMessageType.ACK, self, binding.address)
         } else {
@@ -122,6 +142,11 @@ class DhcpServer(
         leaseExpiresAtMs.remove(mac)
         val binding = bindings.remove(mac) ?: return
         events.emit(id, EventPayload.ProtocolStateChanged(PROTOCOL, binding.state.name, "NONE", "client=$mac address=${binding.address} lease expired"))
+        notifyReleased(binding)
+    }
+
+    private fun notifyReleased(binding: Binding) {
+        if (binding.state == BindingState.BOUND) binding.hostname?.let { leaseObserver?.leaseReleased(it, binding.address) }
     }
 
     private fun freeAddress(): Ipv4Address? {
@@ -143,6 +168,7 @@ class DhcpServer(
             leaseSeconds = pool.leaseSeconds.takeIf { positive },
             subnetMask = pool.subnetMask.takeIf { positive },
             router = pool.router.takeIf { positive },
+            dnsServer = pool.dnsServer.takeIf { positive },
         )
         // A NAK is always broadcast (RFC 2131 4.3.2); otherwise honor the client's BROADCAST flag.
         val (dstIp, dstMac) = if (to.broadcast || !positive) Ipv4Address.BROADCAST to MacAddress.BROADCAST else address to to.chaddr
@@ -158,9 +184,10 @@ class DhcpServer(
                 "start" to pool.start.toString(), "end" to pool.end.toString(),
                 "subnetMask" to pool.subnetMask.toString(), "router" to pool.router?.toString(),
                 "leaseSeconds" to pool.leaseSeconds,
+                "dnsServer" to pool.dnsServer?.toString(),
             ),
             "leases" to bindings.map { (mac, b) ->
-                mapOf("mac" to mac.toString(), "address" to b.address.toString(), "state" to b.state.name, "expiresAtMs" to leaseExpiresAtMs[mac])
+                mapOf("mac" to mac.toString(), "address" to b.address.toString(), "state" to b.state.name, "hostname" to b.hostname, "expiresAtMs" to leaseExpiresAtMs[mac])
             },
         ),
         relations = mapOf("interface" to listOf(transport.interfaceId)),
