@@ -5,3 +5,5 @@ web-client/public/wasm/
 web-client/*.tsbuildinfo
 web-client/vite.config.js
 web-client/vite.config.d.ts
+.gradle/
+.idea/

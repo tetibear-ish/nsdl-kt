@@ -1,0 +1,82 @@
+{
+  // Every task goes through the flake so Gradle gets JDK 21 regardless of
+  // whatever java is on the system PATH.
+  "version": "2.0.0",
+  "inputs": [
+    {
+      "id": "nsdlArgs",
+      "type": "promptString",
+      "description": "Arguments for ./gradlew run",
+      "default": "shell --seed 7"
+    }
+  ],
+  "tasks": [
+    {
+      "label": "gradle: build",
+      "type": "shell",
+      "command": "nix develop --command ./gradlew classes --console=plain",
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": {
+        "owner": "kotlin",
+        "fileLocation": "absolute",
+        "pattern": {
+          "regexp": "^([ew]): file://(.*):(\\d+):(\\d+) (.*)$",
+          "severity": 1,
+          "file": 2,
+          "line": 3,
+          "column": 4,
+          "message": 5
+        }
+      }
+    },
+    {
+      "label": "gradle: test",
+      "type": "shell",
+      "command": "nix develop --command ./gradlew test --offline --console=plain",
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "gradle: run (prompt for args)",
+      "type": "shell",
+      "command": "nix develop --command ./gradlew run --console=plain --args='${input:nsdlArgs}'",
+      "problemMatcher": []
+    },
+    {
+      "label": "gradle: run debug-jvm (prompt for args)",
+      "type": "shell",
+      "command": "nix develop --command ./gradlew run --console=plain --debug-jvm --args='${input:nsdlArgs}'",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "gradle-debug",
+        "pattern": { "regexp": "^__never_matches__$" },
+        "background": {
+          "activeBegins": ".*",
+          "beginsPattern": "^> Task",
+          "endsPattern": "Listening for transport dt_socket at address"
+        }
+      }
+    },
+    {
+      "label": "gradle: build wasm site",
+      "type": "shell",
+      "command": "nix develop --command ./gradlew :web:wasmJsBrowserDistribution --offline --console=plain",
+      "problemMatcher": []
+    },
+    {
+      "label": "web-client: dev server",
+      "type": "shell",
+      "command": "nix develop --command npm run dev",
+      "options": { "cwd": "${workspaceFolder}/web-client" },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "web-client: test",
+      "type": "shell",
+      "command": "nix develop --command npm test",
+      "options": { "cwd": "${workspaceFolder}/web-client" },
+      "problemMatcher": []
+    }
+  ]
+}

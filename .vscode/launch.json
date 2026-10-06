@@ -1,0 +1,57 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    // Launched by the Kotlin extension (needs VS Code started from `nix develop`
+    // so the language server sees JDK 21; see README).
+    {
+      "name": "nsdl: shell",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "com.a2z.nsdl.MainKt",
+      "args": ["shell", "--seed", "7"],
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "nsdl: demo",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "com.a2z.nsdl.MainKt",
+      "args": ["demo"],
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "nsdl: web :8080",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "com.a2z.nsdl.MainKt",
+      "args": ["web", "--port", "8080", "--seed", "7"],
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "nsdl: serve (port 0)",
+      "type": "intellij_jvm",
+      "request": "launch",
+      "mainClass": "com.a2z.nsdl.MainKt",
+      "args": ["serve", "--port", "0", "--seed", "7"],
+      "preLaunchTask": "intellij: build",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    // Fallback that doesn't depend on the LSP's project model: Gradle runs the
+    // app under the Nix JDK with JDWP suspended on 5005, then we attach.
+    {
+      "name": "nsdl: gradle run + attach (prompt for args)",
+      "type": "intellij_jvm",
+      "request": "attach",
+      "hostName": "localhost",
+      "port": 5005,
+      "preLaunchTask": "gradle: run debug-jvm (prompt for args)"
+    }
+  ]
+}

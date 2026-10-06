@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "jetbrains.kotlin-server"
+  ],
+  "unwantedRecommendations": [
+    // Superseded by JetBrains' official server; running both causes duplicate diagnostics.
+    "fwcd.kotlin",
+    "jetbrains.kotlin"
+  ]
+}
