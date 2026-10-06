@@ -12,6 +12,7 @@ data class DecisionParents(
 enum class Responsibility(val wireName: String) {
     SWITCHING("switching"),
     ROUTING("routing"),
+    NAT("nat"),
 }
 
 enum class DecisionAction {
@@ -19,6 +20,7 @@ enum class DecisionAction {
     FLOOD,
     FORWARD,
     DROP,
+    TRANSLATE,
 }
 
 /**

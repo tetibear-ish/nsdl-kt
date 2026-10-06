@@ -103,6 +103,22 @@ most 8 packets per next hop, and overflowing it drops the oldest packet as
 router is dropped as `NO_ROUTE`. Callers may still pass an explicit MAC, which
 bypasses resolution. Gratuitous ARP, proxy ARP, and cache aging are deferred.
 
+## Network address translation
+
+A `routed-gateway` with `nat=true` and a `wanAddress` masquerades its lan behind
+that address, for UDP. A packet from lan leaving through wan gets the wan
+address as its source and a port from 50000 up; the same inside address and port
+keep one mapping. A packet to the wan address is translated back only when its
+destination port is mapped and its source is a peer the inside host already
+sent to (port-restricted). `portForwards`, e.g.
+`8080>192.168.1.50:80, 2222>192.168.1.60:22`, adds static rules that accept any
+peer, and replies from the forwarded host leave on the forwarded port. Every
+translation and NAT drop is a `DecisionRecorded` event with responsibility
+`nat` (decision `TRANSLATE` or `DROP`), next to the routing decision; the
+router's inspected state lists the mappings. Dynamic mappings have no idle
+timeout and are cleared when the lan or wan link goes down. Hairpinning, ICMP,
+and port-preservation are not modeled.
+
 ## Names and the web
 
 Hosts announce their object id as a DHCP host name (option 12). The `gateway`

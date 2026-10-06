@@ -11,7 +11,7 @@ import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.model.ObjectSnapshot
 import com.a2z.nsdl.model.Responsibility
-import com.a2z.nsdl.net.EthernetFrame
+import com.a2z.nsdl.net.UdpDatagram
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.Ipv4Config
 import com.a2z.nsdl.net.Ipv4Packet
@@ -27,6 +27,10 @@ import com.a2z.nsdl.net.Ipv4Packet
  * A forwarded packet leaves through the egress interface's stack, which resolves the route's next hop
  * (or, for a directly connected route, the destination itself) with ARP.
  *
+ * With a [NatConfig], packets from the inside interface leaving through the outside one are
+ * source-translated, and packets to the outside address are translated back (see [NatTable]); each
+ * translation is logged as a [Responsibility.NAT] decision alongside the routing decision.
+ *
  * Router has no lifecycle of its own: it has no per-generation timers, and forwarding naturally stops
  * when an interface is disabled (an [FramePort.send] on a disabled port already reports
  * [com.a2z.nsdl.model.DropReason.LINK_DOWN]). It composes alongside a device's interfaces, not as a
@@ -37,11 +41,23 @@ class Router(
     private val interfaces: List<FramePort>,
     private val events: EventSink,
     private val decisionCapacity: Int = 100,
+    private val nat: NatConfig? = null,
 ) : Inspectable {
     init { require(decisionCapacity > 0) { "decision capacity must be positive" } }
 
+    private val natTable = nat?.let { NatTable(it.portForwards) }
+
     private val stacksByInterface: Map<ObjectId, Ipv4Stack> = interfaces.associate { port ->
-        port.id to Ipv4Stack(port, events) { frame, packet -> forward(port.id, frame, packet) }
+        val interceptor = if (nat != null && port.id == nat.outside) Ipv4Interceptor { _, packet -> inbound(port.id, packet) } else null
+        port.id to Ipv4Stack(port, events, forwarder = { _, packet -> forward(port.id, packet) }, interceptor = interceptor)
+    }
+
+    init {
+        if (nat != null) {
+            interfaces.filter { it.id == nat.inside || it.id == nat.outside }.forEach { port ->
+                port.addLinkListener { up -> if (!up) natTable?.reset() }
+            }
+        }
     }
     private val staticRoutes = mutableListOf<Route>()
     private val decisions = mutableListOf<DecisionRecord>()
@@ -74,7 +90,23 @@ class Router(
 
     private fun lookup(dst: Ipv4Address): Route? = routes().filter { it.matches(dst) }.maxByOrNull { it.prefixLength }
 
-    private fun forward(ingressId: ObjectId, frame: EthernetFrame, packet: Ipv4Packet) {
+    /** NAT inbound: translate a packet for the outside address back to its inside host, then route it. */
+    private fun inbound(ingressId: ObjectId, packet: Ipv4Packet): Boolean {
+        val table = natTable ?: return false
+        val udp = packet.payload as? UdpDatagram ?: return false
+        val translated = table.inbound(packet)
+        val attributes = mapOf("original" to "${packet.dst}:${udp.dstPort}", "source" to "${packet.src}:${udp.srcPort}")
+        if (translated == null) {
+            record(DecisionAction.DROP, "no NAT mapping for this port and peer", ingressId, attributes, Responsibility.NAT)
+            return false
+        }
+        val inside = translated.payload as UdpDatagram
+        record(DecisionAction.TRANSLATE, "destination translated", ingressId, attributes + ("translated" to "${translated.dst}:${inside.dstPort}"), Responsibility.NAT)
+        forward(ingressId, translated)
+        return true
+    }
+
+    private fun forward(ingressId: ObjectId, packet: Ipv4Packet) {
         if (packet.ttl <= 1) {
             record(DecisionAction.DROP, "ttl expired", ingressId, mapOf("destination" to packet.dst.toString(), "ttl" to packet.ttl.toString()))
             return
@@ -85,7 +117,10 @@ class Router(
             return
         }
         val egress = stacksByInterface.getValue(route.interfaceId)
-        val forwardedPacket = packet.copy(ttl = packet.ttl - 1)
+        var forwardedPacket = packet.copy(ttl = packet.ttl - 1)
+        if (nat != null && natTable != null && ingressId == nat.inside && route.interfaceId == nat.outside) {
+            forwardedPacket = translateOutbound(ingressId, forwardedPacket, egress) ?: return
+        }
         val attributes = mapOf(
             "destination" to packet.dst.toString(),
             "matchedPrefix" to "${route.destination}/${route.prefixLength}",
@@ -102,10 +137,36 @@ class Router(
         }
     }
 
-    private fun record(action: DecisionAction, reason: String, ingressId: ObjectId, attributes: Map<String, String>) {
+    private fun translateOutbound(ingressId: ObjectId, packet: Ipv4Packet, egress: Ipv4Stack): Ipv4Packet? {
+        val udp = packet.payload as? UdpDatagram ?: return packet
+        val original = mapOf("original" to "${packet.src}:${udp.srcPort}", "destination" to "${packet.dst}:${udp.dstPort}")
+        val outsideAddress = egress.config?.address
+        if (outsideAddress == null) {
+            record(DecisionAction.DROP, "outside interface has no address to translate to", ingressId, original, Responsibility.NAT)
+            return null
+        }
+        val translation = natTable!!.outbound(packet, outsideAddress) ?: return packet
+        val translated = "${translation.packet.src}:${(translation.packet.payload as UdpDatagram).srcPort}"
+        record(
+            DecisionAction.TRANSLATE,
+            if (translation.created) "source translated (new mapping)" else "source translated",
+            ingressId,
+            original + ("translated" to translated),
+            Responsibility.NAT,
+        )
+        return translation.packet
+    }
+
+    private fun record(
+        action: DecisionAction,
+        reason: String,
+        ingressId: ObjectId,
+        attributes: Map<String, String>,
+        responsibility: Responsibility = Responsibility.ROUTING,
+    ) {
         val r = DecisionRecord(
             id = "${id.value}:decision:${nextDecision++}",
-            responsibility = Responsibility.ROUTING,
+            responsibility = responsibility,
             decision = action,
             reason = reason,
             parents = DecisionParents(),
@@ -123,6 +184,14 @@ class Router(
         state = mapOf(
             "routes" to routes().map { it.toState() },
             "decisions" to decisions.map { it.toState() },
+            "nat" to nat?.let {
+                mapOf(
+                    "inside" to it.inside.value,
+                    "outside" to it.outside.value,
+                    "outsideAddress" to stacksByInterface.getValue(it.outside).config?.address?.toString(),
+                    "mappings" to natTable?.state(),
+                )
+            },
         ),
         relations = mapOf("interfaces" to interfaces.map { it.id }),
     )

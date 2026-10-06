@@ -15,6 +15,7 @@ import com.a2z.nsdl.app.types.WebServerType
 import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.events.EventHub
 import com.a2z.nsdl.events.EventRecord
+import com.a2z.nsdl.ip.PortForward
 import com.a2z.nsdl.ipc.json.Json
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.EventPayload
@@ -248,7 +249,7 @@ class WebSimulation(seed: Long = 0L) {
             "interfaces" to value.interfaces.map { mapOf("name" to it.name, "media" to it.media.name) },
         )
         is List<*> -> value.map(::toWire)
-        is Ipv4Address, is MacAddress -> value.toString()
+        is Ipv4Address, is MacAddress, is PortForward -> value.toString()
         is LinkProfile -> value.name
         else -> value
     }

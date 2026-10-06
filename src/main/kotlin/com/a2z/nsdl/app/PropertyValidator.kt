@@ -1,5 +1,6 @@
 package com.a2z.nsdl.app
 
+import com.a2z.nsdl.ip.PortForward
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
@@ -67,6 +68,16 @@ internal fun coerce(type: PropertyType, value: Any): Any? = when (type) {
     PropertyType.LINK_PROFILE -> when (value) {
         is LinkProfile -> value
         is String -> LinkProfile.SUPPORTED[value]
+        else -> null
+    }
+    PropertyType.BOOLEAN -> when (value) {
+        is Boolean -> value
+        is String -> value.trim().lowercase().toBooleanStrictOrNull()
+        else -> null
+    }
+    PropertyType.PORT_FORWARDS -> when (value) {
+        is List<*> -> value.takeIf { list -> list.all { it is PortForward } }
+        is String -> PortForward.parseList(value)
         else -> null
     }
 }

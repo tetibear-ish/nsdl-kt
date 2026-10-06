@@ -13,7 +13,7 @@ import com.a2z.nsdl.sim.Scheduler
 import kotlin.random.Random
 
 /** How a property's value is validated and coerced. See [com.a2z.nsdl.app.coerce]. */
-enum class PropertyType { STRING, LONG, IPV4, MAC, LINK_PROFILE }
+enum class PropertyType { STRING, LONG, IPV4, MAC, LINK_PROFILE, BOOLEAN, PORT_FORWARDS }
 
 /**
  * One property a type accepts. [default] is a fully-typed value (not a raw string) used when the

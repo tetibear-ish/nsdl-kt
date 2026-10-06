@@ -59,6 +59,15 @@ fun interface Ipv4Forwarder {
 }
 
 /**
+ * Offered a unicast UDP packet addressed to this interface's own address whose port has no local
+ * listener, before it would be dropped. Returns true if it took the packet (e.g. NAT translating it
+ * for an inside host). Lets a router claim traffic for its outside address without binding ports.
+ */
+fun interface Ipv4Interceptor {
+    fun intercept(frame: EthernetFrame, packet: Ipv4Packet): Boolean
+}
+
+/**
  * Minimal per-interface IPv4 host stack: one address, UDP only, no fragmentation. Accepts packets
  * addressed to its address, the limited broadcast, or its subnet broadcast; anything else is handed
  * to [forwarder] when present, or dropped.
@@ -73,6 +82,7 @@ fun interface Ipv4Forwarder {
 class Ipv4Stack(
     private val port: FramePort,
     private val events: EventSink,
+    private val interceptor: Ipv4Interceptor? = null,
     private val forwarder: Ipv4Forwarder? = null,
 ) : UdpTransport, IpConfigurable {
     private val listeners = mutableMapOf<Int, UdpHandler>()
@@ -173,6 +183,7 @@ class Ipv4Stack(
         }
         val datagram = packet?.payload as? UdpDatagram
         val handler = datagram?.let { listeners[it.dstPort] }
+        if (packet != null && handler == null && packet.dst == config?.address && interceptor?.intercept(frame, packet) == true) return
         if (packet == null || datagram == null || handler == null || !isForUs(packet.dst)) {
             events.emit(port.id, EventPayload.FrameDropped(frame, DropReason.NO_LISTENER))
             return

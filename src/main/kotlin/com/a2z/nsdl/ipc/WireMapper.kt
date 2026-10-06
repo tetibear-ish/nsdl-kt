@@ -1,6 +1,7 @@
 package com.a2z.nsdl.ipc
 
 import com.a2z.nsdl.dhcp.PacketDecoder
+import com.a2z.nsdl.ip.PortForward
 import com.a2z.nsdl.ip.toState
 import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.EventPayload
@@ -41,9 +42,9 @@ object WireMapper {
         ) + PacketDecoder.decode(payload.frame)
     }
 
-    /** Property values are typed (addresses, link profiles); the wire carries their text form. */
+    /** Property values are typed (addresses, link profiles, port forwards); the wire carries their text form. */
     private fun plain(value: Any?): Any? = when (value) {
-        is Ipv4Address, is MacAddress -> value.toString()
+        is Ipv4Address, is MacAddress, is PortForward -> value.toString()
         is LinkProfile -> value.name
         is List<*> -> value.map(::plain)
         else -> value

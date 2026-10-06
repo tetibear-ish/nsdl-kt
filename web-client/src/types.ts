@@ -10,7 +10,7 @@ export type ObjectSnapshot = {
 
 export type PropertySpec = {
   name: string;
-  type: "STRING" | "LONG" | "IPV4" | "MAC" | "LINK_PROFILE";
+  type: "STRING" | "LONG" | "IPV4" | "MAC" | "LINK_PROFILE" | "BOOLEAN" | "PORT_FORWARDS";
   required: boolean;
   default?: unknown;
   mutable?: boolean;

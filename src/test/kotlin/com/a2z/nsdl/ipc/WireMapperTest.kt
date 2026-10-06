@@ -4,6 +4,7 @@ import com.a2z.nsdl.dhcp.BootOp
 import com.a2z.nsdl.dhcp.DhcpMessage
 import com.a2z.nsdl.dhcp.DhcpMessageType
 import com.a2z.nsdl.dhcp.PacketDecoder
+import com.a2z.nsdl.ip.PortForward
 import com.a2z.nsdl.ip.toState
 import com.a2z.nsdl.ipc.json.Json
 import com.a2z.nsdl.model.DecisionAction
@@ -47,12 +48,13 @@ class WireMapperTest {
             EventPayload.ConfigurationChanged(
                 mapOf(
                     "address" to Ipv4Address.parse("10.0.0.1"),
+                    "portForwards" to listOf(PortForward(8080, Ipv4Address.parse("10.0.0.5"), 80)),
                     "nat" to true,
                 ),
             ),
         )
 
-        assertEquals(mapOf("properties" to mapOf("address" to "10.0.0.1", "nat" to true)), data)
+        assertEquals(mapOf("properties" to mapOf("address" to "10.0.0.1", "portForwards" to listOf("8080>10.0.0.5:80"), "nat" to true)), data)
         Json.write(data)
     }
 

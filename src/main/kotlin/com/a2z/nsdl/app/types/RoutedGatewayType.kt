@@ -11,6 +11,8 @@ import com.a2z.nsdl.device.HostBuilder
 import com.a2z.nsdl.dhcp.DhcpPool
 import com.a2z.nsdl.dhcp.DhcpServer
 import com.a2z.nsdl.dns.DnsServer
+import com.a2z.nsdl.ip.NatConfig
+import com.a2z.nsdl.ip.PortForward
 import com.a2z.nsdl.ip.Route
 import com.a2z.nsdl.ip.Router
 import com.a2z.nsdl.link.MediaType
@@ -35,6 +37,8 @@ import kotlin.time.Duration.Companion.milliseconds
  *   a DNS server for the lan comes with it, offered to clients and fed by their named leases.
  * - The wan interface is optional ([wanAddress] unset leaves it unconfigured).
  * - A default route out wan is installed only when both [wanAddress] and [wanGateway] are set.
+ * - [nat] masquerades the lan behind the wan address (requires wanAddress); [portForwards] opens
+ *   static inbound rules such as "8080>192.168.1.50:80".
  */
 object RoutedGatewayType : ObjectType {
     override val schema = ObjectTypeSchema(
@@ -50,6 +54,8 @@ object RoutedGatewayType : ObjectType {
             PropertySpec("poolStart", PropertyType.IPV4, required = false, default = null, mutable = true, description = "First address of the DHCP pool served on lan; requires poolEnd"),
             PropertySpec("poolEnd", PropertyType.IPV4, required = false, default = null, mutable = true, description = "Last address of the DHCP pool served on lan; requires poolStart"),
             PropertySpec("leaseSeconds", PropertyType.LONG, required = false, default = 3600L, mutable = true, description = "DHCP lease duration in seconds"),
+            PropertySpec("nat", PropertyType.BOOLEAN, required = false, default = false, mutable = true, description = "Translate lan traffic leaving through wan to the wan address; requires wanAddress"),
+            PropertySpec("portForwards", PropertyType.PORT_FORWARDS, required = false, default = emptyList<PortForward>(), mutable = true, description = "Inbound NAT rules, e.g. \"8080>192.168.1.50:80, 2222>192.168.1.60:22\""),
         ),
         interfaces = listOf(InterfaceSpec("lan", MediaType.TWISTED_PAIR), InterfaceSpec("wan", MediaType.TWISTED_PAIR)),
     )
@@ -58,7 +64,9 @@ object RoutedGatewayType : ObjectType {
         val builder = HostBuilder(id, schema.name, ctx.scheduler, ctx.events)
         val lan = builder.ethernetRaw("lan", ctx.nextMac())
         val wan = builder.ethernetRaw("wan", ctx.nextMac())
-        val router = Router(id.child("router"), listOf(lan, wan), ctx.events)
+        @Suppress("UNCHECKED_CAST")
+        val nat = if (props["nat"] as Boolean && props["wanAddress"] != null) NatConfig(lan.id, wan.id, props["portForwards"] as List<PortForward>) else null
+        val router = Router(id.child("router"), listOf(lan, wan), ctx.events, nat = nat)
 
         val lanAddress = props["lanAddress"] as Ipv4Address
         val lanSubnetMask = props["lanSubnetMask"] as Ipv4Address
