@@ -2,7 +2,10 @@ package com.a2z.nsdl.ipc
 
 import com.a2z.nsdl.dhcp.PacketDecoder
 import com.a2z.nsdl.ip.toState
+import com.a2z.nsdl.link.LinkProfile
 import com.a2z.nsdl.model.EventPayload
+import com.a2z.nsdl.net.Ipv4Address
+import com.a2z.nsdl.net.MacAddress
 
 /** Converts a typed [EventPayload] into a JSON-safe Map for the wire, exhaustively over every kind. */
 object WireMapper {
@@ -21,7 +24,7 @@ object WireMapper {
         is EventPayload.PacketAccepted -> mapOf("packet" to payload.packet.describe())
         is EventPayload.ProtocolStateChanged -> mapOf("protocol" to payload.protocol, "from" to payload.from, "to" to payload.to, "detail" to payload.detail)
         is EventPayload.NetworkConfigChanged -> mapOf("config" to payload.config?.toState())
-        is EventPayload.ConfigurationChanged -> mapOf("properties" to payload.properties)
+        is EventPayload.ConfigurationChanged -> mapOf("properties" to payload.properties.mapValues { (_, value) -> plain(value) })
         is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
         is EventPayload.ActionPerformed -> mapOf("action" to payload.action, "accepted" to payload.accepted, "detail" to payload.detail)
         is EventPayload.PacketObserved -> mapOf(
@@ -35,5 +38,13 @@ object WireMapper {
             "outcome" to payload.outcome.name,
             "dropReason" to payload.dropReason?.name,
         ) + PacketDecoder.decode(payload.frame)
+    }
+
+    /** Property values are typed (addresses, link profiles); the wire carries their text form. */
+    private fun plain(value: Any?): Any? = when (value) {
+        is Ipv4Address, is MacAddress -> value.toString()
+        is LinkProfile -> value.name
+        is List<*> -> value.map(::plain)
+        else -> value
     }
 }

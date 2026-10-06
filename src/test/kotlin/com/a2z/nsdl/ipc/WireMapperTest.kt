@@ -1,14 +1,15 @@
 package com.a2z.nsdl.ipc
 
-import com.a2z.nsdl.ip.toState
 import com.a2z.nsdl.dhcp.BootOp
 import com.a2z.nsdl.dhcp.DhcpMessage
 import com.a2z.nsdl.dhcp.DhcpMessageType
 import com.a2z.nsdl.dhcp.PacketDecoder
-import com.a2z.nsdl.model.DropReason
+import com.a2z.nsdl.ip.toState
+import com.a2z.nsdl.ipc.json.Json
 import com.a2z.nsdl.model.DecisionAction
 import com.a2z.nsdl.model.DecisionParents
 import com.a2z.nsdl.model.DecisionRecord
+import com.a2z.nsdl.model.DropReason
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
@@ -38,6 +39,21 @@ class WireMapperTest {
             mapOf("type" to "printer", "kind" to "DEVICE"),
             WireMapper.toData(EventPayload.ObjectCreated("printer", ObjectKind.DEVICE)),
         )
+    }
+
+    @Test
+    fun `maps ConfigurationChanged with typed property values to their text form, so it can be written as JSON`() {
+        val data = WireMapper.toData(
+            EventPayload.ConfigurationChanged(
+                mapOf(
+                    "address" to Ipv4Address.parse("10.0.0.1"),
+                    "nat" to true,
+                ),
+            ),
+        )
+
+        assertEquals(mapOf("properties" to mapOf("address" to "10.0.0.1", "nat" to true)), data)
+        Json.write(data)
     }
 
     @Test
