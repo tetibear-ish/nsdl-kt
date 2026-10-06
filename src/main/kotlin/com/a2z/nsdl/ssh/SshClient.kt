@@ -18,11 +18,12 @@ data class SshCommandOutput(val command: String, val text: String, val exitCode:
 /** One scripted session's progress. Mutated reactively as the server's replies arrive; see [SshClient]. */
 data class SshSession(
     val serverAddress: Ipv4Address,
-    val serverMac: MacAddress,
+    val serverMac: MacAddress?,
     val username: String,
     val password: String,
     val command: String,
-    val fileName: String,
+    /** Null skips the file transfer: the session disconnects right after the command's output. */
+    val fileName: String?,
     val fileBytes: Int,
     val chunkSize: Int,
     var status: SshSessionStatus = SshSessionStatus.HELLO_SENT,
@@ -33,8 +34,8 @@ data class SshSession(
 
 /**
  * The client half of the teaching SSH protocol. A single Actionable action, "openSession", scripts an
- * entire session: version hello, password auth, one exec'd command, then one chunked file transfer,
- * ending in a disconnect -- each step triggered by the previous step's reply, the same reactive style
+ * entire session: version hello, password auth, one exec'd command, then (optionally) one chunked file
+ * transfer, ending in a disconnect -- each step triggered by the previous step's reply, the same reactive style
  * [com.a2z.nsdl.dhcp.DhcpClient] uses for its own state machine. Only one session may be open at a time;
  * there is no interactive shell, multiple commands, or concurrent sessions in this teaching model.
  */
@@ -42,6 +43,11 @@ class SshClient(override val id: ObjectId, private val transport: UdpTransport) 
     private var started = false
     var session: SshSession? = null
         private set
+    private var onFinished: ((SshSession) -> Unit)? = null
+
+    /** Whether a session is in progress; only one may be open at a time. */
+    val busy: Boolean
+        get() = session?.let { it.status != SshSessionStatus.CLOSED && it.status != SshSessionStatus.FAILED } == true
 
     init {
         transport.bind(SshProtocol.CLIENT_PORT) { received ->
@@ -58,18 +64,26 @@ class SshClient(override val id: ObjectId, private val transport: UdpTransport) 
                     } else {
                         current.status = SshSessionStatus.FAILED
                         current.detail = message.detail
+                        finished(current)
                     }
                 }
                 is SshMessage.Output -> if (current.status == SshSessionStatus.COMMAND_SENT) {
                     current.lastOutput = SshCommandOutput(message.command, message.text, message.exitCode)
-                    current.status = SshSessionStatus.TRANSFERRING
-                    startTransfer(current)
+                    if (current.fileName == null) {
+                        send(current, SshMessage.Disconnect("session complete"))
+                        current.status = SshSessionStatus.CLOSED
+                        finished(current)
+                    } else {
+                        current.status = SshSessionStatus.TRANSFERRING
+                        startTransfer(current, current.fileName)
+                    }
                 }
                 is SshMessage.FileResult -> if (current.status == SshSessionStatus.TRANSFERRING) {
                     current.transferAccepted = message.accepted
                     current.detail = message.detail
                     send(current, SshMessage.Disconnect("session complete"))
                     current.status = SshSessionStatus.CLOSED
+                    finished(current)
                 }
                 else -> Unit
             }
@@ -77,38 +91,77 @@ class SshClient(override val id: ObjectId, private val transport: UdpTransport) 
     }
 
     override fun start(scope: WorkScope) { started = true }
-    override fun stop() { started = false; session = null }
+    override fun stop() { started = false; session = null; onFinished = null }
+
+    /**
+     * Starts a session. [serverMac] is normally omitted and resolved with ARP. [onFinished] runs once
+     * when the session closes or fails; it never runs if this returns false (busy or link unavailable)
+     * or the server never answers. Returns whether the session was started.
+     */
+    fun openSession(
+        serverAddress: Ipv4Address,
+        username: String,
+        password: String,
+        command: String,
+        serverMac: MacAddress? = null,
+        fileName: String? = null,
+        fileBytes: Int = 0,
+        chunkSize: Int = 1_000,
+        onFinished: ((SshSession) -> Unit)? = null,
+    ): Boolean {
+        if (busy || !started || !transport.linkUp || transport.config == null) return false
+        val newSession = SshSession(serverAddress, serverMac, username, password, command, fileName, fileBytes, chunkSize)
+        session = newSession
+        this.onFinished = onFinished
+        send(newSession, SshMessage.Hello(CLIENT_VERSION))
+        return true
+    }
+
+    private fun finished(session: SshSession) {
+        val callback = onFinished ?: return
+        onFinished = null
+        callback(session)
+    }
 
     override fun perform(action: String, params: Map<String, Any?>): ActionOutcome {
         if (action != "openSession") return ActionOutcome(accepted = false, detail = "unknown action '$action'")
         val current = session
-        if (current != null && current.status != SshSessionStatus.CLOSED && current.status != SshSessionStatus.FAILED) {
+        if (busy && current != null) {
             return ActionOutcome(accepted = false, detail = "a session is already open (status=${current.status})")
         }
         val username = params["username"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'username'")
         val password = params["password"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'password'")
         val command = params["command"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'command'")
-        val fileName = params["fileName"] as? String ?: return ActionOutcome(accepted = false, detail = "missing 'fileName'")
-        val fileBytes = (params["fileBytes"] as? Number)?.toInt() ?: return ActionOutcome(accepted = false, detail = "missing 'fileBytes'")
-        val serverAddress = params["serverAddress"] as? Ipv4Address ?: return ActionOutcome(accepted = false, detail = "missing 'serverAddress'")
-        val serverMac = params["serverMac"] as? MacAddress ?: return ActionOutcome(accepted = false, detail = "missing 'serverMac'")
+        val fileName = params["fileName"] as? String
+        val fileBytes = (params["fileBytes"] as? Number)?.toInt()
+            ?: if (fileName == null) 0 else return ActionOutcome(accepted = false, detail = "missing 'fileBytes'")
+        val serverAddress = when (val value = params["serverAddress"]) {
+            is Ipv4Address -> value
+            is String -> runCatching { Ipv4Address.parse(value) }.getOrNull()
+            else -> null
+        } ?: return ActionOutcome(accepted = false, detail = "missing or invalid 'serverAddress'")
+        val serverMac = when (val value = params["serverMac"]) {
+            null -> null
+            is MacAddress -> value
+            is String -> runCatching { MacAddress.parse(value) }.getOrNull() ?: return ActionOutcome(accepted = false, detail = "invalid 'serverMac'")
+            else -> return ActionOutcome(accepted = false, detail = "invalid 'serverMac'")
+        }
         val chunkSize = (params["chunkSize"] as? Number)?.toInt() ?: 1_000
-        if (!started || !transport.linkUp || transport.config == null) return ActionOutcome(accepted = false, detail = "link unavailable")
 
-        val newSession = SshSession(serverAddress, serverMac, username, password, command, fileName, fileBytes, chunkSize)
-        session = newSession
-        send(newSession, SshMessage.Hello(CLIENT_VERSION))
-        return ActionOutcome(accepted = true, detail = "session opened", data = mapOf("status" to newSession.status.name))
+        if (!openSession(serverAddress, username, password, command, serverMac, fileName, fileBytes, chunkSize)) {
+            return ActionOutcome(accepted = false, detail = "link unavailable")
+        }
+        return ActionOutcome(accepted = true, detail = "session opened", data = mapOf("status" to session!!.status.name))
     }
 
-    private fun startTransfer(session: SshSession) {
+    private fun startTransfer(session: SshSession, fileName: String) {
         val chunkCount = if (session.fileBytes == 0) 0 else (session.fileBytes + session.chunkSize - 1) / session.chunkSize
-        send(session, SshMessage.FileStart(session.fileName, session.fileBytes, chunkCount))
+        send(session, SshMessage.FileStart(fileName, session.fileBytes, chunkCount))
         repeat(chunkCount) { index ->
             val bytes = minOf(session.chunkSize, session.fileBytes - index * session.chunkSize)
-            send(session, SshMessage.FileChunk(session.fileName, index, bytes))
+            send(session, SshMessage.FileChunk(fileName, index, bytes))
         }
-        send(session, SshMessage.FileComplete(session.fileName))
+        send(session, SshMessage.FileComplete(fileName))
     }
 
     private fun send(session: SshSession, message: SshMessage) =

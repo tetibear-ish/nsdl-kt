@@ -54,8 +54,10 @@ computer                         printer
 ```
 
 The exchange uses typed UDP payloads on destination port 9100. It is not TCP or wire-compatible
-IPP. The current network model has neither TCP nor ARP, so the caller supplies the printer's MAC
-address as well as its IPv4 address. This boundary keeps the lesson accurate: students can inspect
+IPP. This protocol-level scenario supplies the printer's IPv4 address and, optionally, its MAC
+address (omitted, the computer resolves it with ARP). The software layer's `print-spooler` reaches
+the same exchange by printer name instead (see "Software layer" in ARCHITECTURE.md). This boundary
+keeps the lesson accurate: students can inspect
 job boundaries, UDP/IP packets, Ethernet forwarding, chunk counts, byte counts, and the printer's
 accept/reject decision without being shown a fictional TCP handshake.
 

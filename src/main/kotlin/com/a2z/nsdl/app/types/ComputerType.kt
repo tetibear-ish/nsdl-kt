@@ -15,13 +15,18 @@ import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
 import com.a2z.nsdl.net.MacAddress
+import com.a2z.nsdl.platform.OperatingSystemService
+import com.a2z.nsdl.platform.ProtocolNetworkServices
 import com.a2z.nsdl.print.PrintClient
+import com.a2z.nsdl.software.OperatingSystem
 import com.a2z.nsdl.ssh.SshClient
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * A workstation: DHCP (announcing its id as host name), a DNS resolver, and the client side of the
- * teaching web, print and SSH protocols.
+ * A workstation. Network layer: DHCP (announcing its id as host name), a DNS resolver, and the
+ * client side of the teaching web, print and SSH protocols. Software layer: an [OperatingSystem]
+ * whose applications ("<id>.browser", "<id>.print-spooler", "<id>.terminal") use those clients only
+ * through [ProtocolNetworkServices].
  */
 object ComputerType : ObjectType {
     override val schema = ObjectTypeSchema(
@@ -39,16 +44,19 @@ object ComputerType : ObjectType {
         val eth0 = builder.ethernet("eth0", props["mac"] as? MacAddress ?: ctx.nextMac())
         val dhcpId = id.child("dhcp-client")
         builder.service(DhcpClient(dhcpId, eth0, eth0, ctx.random(dhcpId), ctx.events, hostname = id.value))
-        builder.service(PrintClient(id.child("print-client"), eth0))
-        builder.service(SshClient(id.child("ssh-client"), eth0))
-        builder.service(DnsResolver(id.child("dns-resolver"), eth0, ctx.events))
-        builder.service(WebClient(id.child("web-client"), eth0))
+        val print = PrintClient(id.child("print-client"), eth0).also(builder::service)
+        val ssh = SshClient(id.child("ssh-client"), eth0).also(builder::service)
+        val resolver = DnsResolver(id.child("dns-resolver"), eth0, ctx.events).also(builder::service)
+        val web = WebClient(id.child("web-client"), eth0).also(builder::service)
+
+        val os = OperatingSystem(id, ProtocolNetworkServices(id, eth0, resolver, web, print, ssh), ctx.events)
+        builder.service(OperatingSystemService(os))
 
         val bootMs = props["bootMs"] as Long
         val device = builder.build { bootMs.milliseconds }
         return SimObject(
             root = device,
-            components = device.interfaces + device.services,
+            components = device.interfaces + device.services + os.applications,
             power = device,
             endpoints = device.interfaces,
         )

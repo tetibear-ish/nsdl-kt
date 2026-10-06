@@ -9,7 +9,8 @@ electrical signaling, or host networking.
 Dependencies point inward toward the simulation core:
 
 ```text
-sim <- model/net <- link <- ip <- dhcp/dns/http/print/ssh/device <- app <- nsdl/events/runtime <- ipc <- Composition/Main
+sim <- model/net <- link <- ip <- dhcp/dns/http/print/ssh/device <- platform <- app <- nsdl/events/runtime <- ipc <- Composition/Main
+sim/model <- software <------------------------------------------'
 ```
 
 - `sim` owns deterministic virtual time, scheduled work, and cancellation.
@@ -18,6 +19,10 @@ sim <- model/net <- link <- ip <- dhcp/dns/http/print/ssh/device <- app <- nsdl/
 - `ip` provides the minimal IPv4/UDP host stack, ARP, and routing.
 - `dhcp`, `dns`, `http`, `print`, `ssh`, and `device` provide protocol state
   machines and reusable host lifecycle. This is the network layer.
+- `software` is the software layer: an operating system and applications that
+  depend only on `sim`, `model`, and their own `NetworkServices` interface.
+- `platform` implements `NetworkServices` with a host's protocol clients. It is
+  the only package that sees both layers.
 - `app` validates types and commands before changing simulation state.
 - `nsdl` defines topology input; `events` sequences retained event history;
   `runtime` confines mutations to one thread and journals accepted input.
@@ -114,12 +119,48 @@ The teaching web protocol is a single `GET` and a response carrying a whole page
 `/about`; other paths are a 404 page. The web client waits 5 seconds for a
 response and does not retransmit.
 
+## Software layer
+
+A `computer` runs an `OperatingSystem` on top of its protocol clients. Its
+applications are components of the host and are driven with `invoke`:
+
+| Component | Action | Parameters |
+|---|---|---|
+| `<id>.browser` | `open` | `url` such as `intranet`, `intranet/about`, or `http://intranet/` |
+| `<id>.browser` | `reload` | none |
+| `<id>.print-spooler` | `print` | `document`, `printer` (host name), optional `pages` |
+| `<id>.terminal` | `ssh` | `target` (`user@host`), `password`, `command` |
+| `<id>.terminal` | `clear` | none |
+
+An action's reply only reports whether it was started; its outcome shows up in
+the application's inspected state and as `ApplicationEvent`s. Applications
+address other machines by name and never see packets, ports, interfaces, or MAC
+addresses: they call `NetworkServices` (resolve, fetch a page, print a document,
+run a remote command), which `platform.ProtocolNetworkServices` maps onto the
+DNS, web, print, and SSH clients. Every application request has a 10-second
+timeout, and results that arrive after the host has restarted are discarded.
+
+A timeout says what timed out and why, e.g. `printing minutes.txt on printer1
+timed out: no ARP reply from 192.168.1.101`. The cause comes from
+`NetworkServices.diagnose`, which reports the interface's own view (link down,
+no route, an unanswered ARP request) as plain text that software shows without
+interpreting; with no local cause it is `<host> did not respond`. A request
+that cannot be sent at all fails at once with that cause instead of timing out.
+A print job the printer confirms is `ACCEPTED` (the model has no paper), and it
+travels as `<host>/<job>` (e.g. `pc1/job-1`), the name the printer records.
+`LayerBoundaryTest` fails the build if `software` imports a network package or
+a network package imports `software` or `platform`.
+
+The low-level protocol actions (`<id>.print-client` `submit`, `<id>.ssh-client`
+`openSession`) remain for network-level lessons. Their MAC parameters are now
+optional and resolved with ARP when omitted.
+
 ## Persistent and volatile state
 
 Persistent object configuration, such as boot time, MAC address, static IP,
 DHCP pool, and a DNS server's static records, survives a power cycle. DHCP
 client state and acquired network configuration, DHCP server offers and leases,
-dynamic DNS records, ARP caches, resolver caches, and
+dynamic DNS records, ARP caches, resolver caches, application state, and
 operational link state are cleared at power-off.
 
 ## DHCP subset

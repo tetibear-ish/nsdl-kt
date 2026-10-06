@@ -27,6 +27,7 @@ object WireMapper {
         is EventPayload.ConfigurationChanged -> mapOf("properties" to payload.properties.mapValues { (_, value) -> plain(value) })
         is EventPayload.DecisionRecorded -> mapOf("record" to payload.record.toState())
         is EventPayload.ActionPerformed -> mapOf("action" to payload.action, "accepted" to payload.accepted, "detail" to payload.detail)
+        is EventPayload.ApplicationEvent -> mapOf("application" to payload.application, "activity" to payload.activity, "detail" to payload.detail)
         is EventPayload.PacketObserved -> mapOf(
             "transitId" to payload.transitId,
             "sentAtMs" to payload.sentAtMs,

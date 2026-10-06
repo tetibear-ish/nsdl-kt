@@ -38,6 +38,7 @@ An error reply is structured and does not mutate simulation state:
 | `disconnect` | `cableId` |
 | `configure` | `id`, `props` object |
 | `powerOn`, `powerOff` | `id` |
+| `invoke` | `id` of an actionable component, `action`, optional `params` object |
 | `advance` | `durationMs` |
 | `subscribe` | optional `objectId`, optional `types`, optional `from`; required `capacity` |
 | `unsubscribe` | `subscriptionId` |
@@ -78,7 +79,15 @@ list of event type names. An event push has this shape:
 Event types are `ObjectCreated`, `PowerOnStarted`, `BootCompleted`, `PoweredOff`,
 `Connected`, `Disconnected`, `LinkStateChanged`, `FrameSent`, `FrameReceived`,
 `FrameDropped`, `PacketAccepted`, `ProtocolStateChanged`,
-`NetworkConfigChanged`, and `ConfigurationChanged`.
+`NetworkConfigChanged`, `ConfigurationChanged`, `DecisionRecorded`,
+`ActionPerformed`, `PacketObserved`, and `ApplicationEvent`.
+
+`ApplicationEvent` comes from the software layer (source = an application such
+as `pc1.browser`) with `application`, `activity` (e.g. `navigate`, `loaded`,
+`failed`, `queued`, `accepted`), and `detail`. Network-level activity stays in
+the other event types; for example ARP resolution is a `ProtocolStateChanged`
+with protocol `arp` on the interface, and ARP frames appear in `PacketObserved`
+with `protocol` `ARP`.
 
 Each subscription has a bounded queue. A slow consumer cannot block the
 simulation thread. If its queue overflows, the server sends a terminal gap and

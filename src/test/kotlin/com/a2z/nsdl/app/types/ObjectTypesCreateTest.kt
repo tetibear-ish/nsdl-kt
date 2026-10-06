@@ -53,7 +53,7 @@ class ObjectTypesCreateTest {
     }
 
     @Test
-    fun `creating a computer builds DHCP, print, SSH, DNS and web clients`() {
+    fun `creating a computer builds network clients and the software layer's applications`() {
         val validated = validateProperties(ComputerType.schema.properties, emptyMap())
 
         val obj = ComputerType.create(ObjectId("computer1"), validated.properties, ctx)
@@ -63,7 +63,8 @@ class ObjectTypesCreateTest {
         assertEquals(1, obj.endpoints.size)
         assertEquals(
             listOf(
-                "ethernet", "dhcp-client", "print-client", "ssh-client", "dns-resolver", "web-client",
+                "ethernet", "dhcp-client", "print-client", "ssh-client", "dns-resolver", "web-client", "operating-system",
+                "browser", "print-spooler", "terminal",
             ),
             obj.components.map { it.snapshot().type },
         )

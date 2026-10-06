@@ -12,7 +12,7 @@ data class ObjectId(val value: String) {
     }
 }
 
-enum class ObjectKind { DEVICE, INTERFACE, CABLE, PROTOCOL }
+enum class ObjectKind { DEVICE, INTERFACE, CABLE, PROTOCOL, APPLICATION }
 
 enum class PowerState { OFF, BOOTING, ON }
 

@@ -25,6 +25,8 @@ import com.a2z.nsdl.net.Ipv4Packet
  * - [PacketObserved] (source = cable): one frame's transit of that cable, observed at both the frame
  *   and the decoded-packet layer under one shared [PacketObserved.transitId] -- the per-cable history
  *   and the protocol-aware packet-inspection pane (S20) both read this event.
+ * - [ApplicationEvent] (source = application): user-level software activity, e.g. a browser
+ *   finishing a page load. Never describes packets; that is what the events above are for.
  */
 sealed interface EventPayload {
     val name: String get() = this::class.simpleName!!
@@ -46,6 +48,7 @@ sealed interface EventPayload {
     data class ConfigurationChanged(val properties: Map<String, Any?>) : EventPayload
     data class DecisionRecorded(val record: DecisionRecord) : EventPayload
     data class ActionPerformed(val action: String, val accepted: Boolean, val detail: String) : EventPayload
+    data class ApplicationEvent(val application: String, val activity: String, val detail: String) : EventPayload
     data class PacketObserved(
         val transitId: String,
         val sentAtMs: Long,
@@ -61,7 +64,7 @@ sealed interface EventPayload {
             "ObjectCreated", "ObjectDeleted", "PowerOnStarted", "BootCompleted", "PoweredOff", "Connected", "Disconnected",
             "LinkStateChanged", "FrameSent", "FrameReceived", "FrameDropped", "PacketAccepted",
             "ProtocolStateChanged", "NetworkConfigChanged", "ConfigurationChanged", "DecisionRecorded", "ActionPerformed",
-            "PacketObserved",
+            "PacketObserved", "ApplicationEvent",
         )
     }
 }

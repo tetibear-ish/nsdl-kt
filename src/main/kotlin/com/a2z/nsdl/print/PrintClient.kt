@@ -25,29 +25,38 @@ data class OutgoingPrintJob(
 class PrintClient(override val id: ObjectId, private val transport: UdpTransport) : DeviceService, Actionable {
     private var started = false
     private val mutableJobs = linkedMapOf<String, OutgoingPrintJob>()
+    private val completions = mutableMapOf<String, (OutgoingPrintJob) -> Unit>()
     val jobs: List<OutgoingPrintJob> get() = mutableJobs.values.toList()
 
     init {
         transport.bind(PrintProtocol.CLIENT_PORT) { received ->
             val reply = received.datagram.payload as? PrintMessage.Reply ?: return@bind
             val job = mutableJobs[reply.jobId] ?: return@bind
-            mutableJobs[reply.jobId] = job.copy(
+            val updated = job.copy(
                 status = if (reply.status == PrintReplyStatus.ACCEPTED) PrintJobStatus.ACKNOWLEDGED else PrintJobStatus.REJECTED,
                 detail = reply.detail,
             )
+            mutableJobs[reply.jobId] = updated
+            completions.remove(reply.jobId)?.invoke(updated)
         }
     }
 
     override fun start(scope: WorkScope) { started = true }
-    override fun stop() { started = false }
+    override fun stop() { started = false; completions.clear() }
 
+    /**
+     * Sends a job. [printerMac] is normally omitted and resolved with ARP. [onReply] runs once when the
+     * printer's reply arrives; it never runs if the job could not be sent (this returns false) or no
+     * reply ever comes.
+     */
     fun submit(
         jobId: String,
         documentName: String,
         bytes: Int,
         printerAddress: Ipv4Address,
-        printerMac: MacAddress,
+        printerMac: MacAddress? = null,
         chunkSize: Int = 1_000,
+        onReply: ((OutgoingPrintJob) -> Unit)? = null,
     ): Boolean {
         require(jobId.isNotBlank()) { "job id must not be blank" }
         require(documentName.isNotBlank()) { "document name must not be blank" }
@@ -64,6 +73,7 @@ class PrintClient(override val id: ObjectId, private val transport: UdpTransport
         }
         if (!send(printerAddress, printerMac, PrintMessage.Complete(jobId))) return fail(jobId)
         mutableJobs[jobId] = mutableJobs.getValue(jobId).copy(status = PrintJobStatus.AWAITING_REPLY)
+        onReply?.let { completions[jobId] = it }
         return true
     }
 
@@ -79,10 +89,11 @@ class PrintClient(override val id: ObjectId, private val transport: UdpTransport
             else -> null
         } ?: return ActionOutcome(accepted = false, detail = "missing or invalid 'printerAddress'")
         val printerMac = when (val value = params["printerMac"]) {
+            null -> null
             is MacAddress -> value
-            is String -> runCatching { MacAddress.parse(value) }.getOrNull()
-            else -> null
-        } ?: return ActionOutcome(accepted = false, detail = "missing or invalid 'printerMac'")
+            is String -> runCatching { MacAddress.parse(value) }.getOrNull() ?: return ActionOutcome(accepted = false, detail = "invalid 'printerMac'")
+            else -> return ActionOutcome(accepted = false, detail = "invalid 'printerMac'")
+        }
         val chunkSize = (params["chunkSize"] as? Number)?.toInt() ?: 1_000
 
         val accepted = try {
@@ -98,7 +109,7 @@ class PrintClient(override val id: ObjectId, private val transport: UdpTransport
         )
     }
 
-    private fun send(dst: Ipv4Address, mac: MacAddress, message: PrintMessage) =
+    private fun send(dst: Ipv4Address, mac: MacAddress?, message: PrintMessage) =
         transport.sendUdp(PrintProtocol.CLIENT_PORT, dst, PrintProtocol.SERVER_PORT, message, mac)
 
     private fun fail(jobId: String): Boolean {
