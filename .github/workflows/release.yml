@@ -5,6 +5,10 @@ name: Release
 #
 # Each matrix OS jlinks its own native image; there's no cross-platform jlinking, so every
 # runner just needs its own JDK 21 to build with.
+#
+# macOS is dropped for now: GitHub's macOS runner queue made releases unacceptably slow. Add
+# macos-latest/macos-13 back to the matrix (asset macos-arm64/macos-x64) when that's no longer
+# true, and restore the corresponding cases in NsdlRelease.CurrentAssetName() on the Unity side.
 on:
   push:
     tags: ["v*"]
@@ -21,10 +25,6 @@ jobs:
             asset: linux-x64
           - os: windows-latest
             asset: windows-x64
-          - os: macos-latest
-            asset: macos-arm64
-          - os: macos-13
-            asset: macos-x64
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v6
