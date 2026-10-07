@@ -68,7 +68,7 @@ class SimulationService(
         is Command.Invoke -> handleInvoke(command)
         is Command.Advance -> handleAdvance(command)
         Command.ListTypes -> CommandResult.Ok(registry.list())
-        Command.ListObjects -> CommandResult.Ok(objects.values.map { it.obj.root.snapshot() })
+        Command.ListObjects -> CommandResult.Ok(objects.values.map { it.obj.snapshot() })
         is Command.Inspect -> handleInspect(command)
         is Command.AnalyzeGraph -> handleAnalyzeGraph(command)
         is Command.Delete -> handleDelete(command)
@@ -86,7 +86,7 @@ class SimulationService(
         val obj = type.create(id, validated.properties, ctx)
         objects[id] = Registered(type, obj, validated.properties)
         events.emit(id, EventPayload.ObjectCreated(type.schema.name, type.schema.kind))
-        return CommandResult.Ok(obj.root.snapshot())
+        return CommandResult.Ok(obj.snapshot())
     }
 
     /**
@@ -292,9 +292,11 @@ class SimulationService(
     private fun handleInspect(cmd: Command.Inspect): CommandResult {
         if (!ObjectId.isValid(cmd.id)) return invalidId(cmd.id)
         val id = ObjectId(cmd.id)
-        val target = objects[id]?.obj?.root
-            ?: objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
-        return target?.let { CommandResult.Ok(it.snapshot()) } ?: unknownObject(cmd.id)
+        // The root goes through SimObject.snapshot() (merging in its configView); a child
+        // component has no configView of its own, so its own plain snapshot() is already complete.
+        objects[id]?.let { return CommandResult.Ok(it.obj.snapshot()) }
+        val component = objects.values.asSequence().flatMap { it.obj.components }.firstOrNull { it.id == id }
+        return component?.let { CommandResult.Ok(it.snapshot()) } ?: unknownObject(cmd.id)
     }
 
     /**

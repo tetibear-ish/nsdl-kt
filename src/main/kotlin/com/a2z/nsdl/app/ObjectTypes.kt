@@ -8,6 +8,7 @@ import com.a2z.nsdl.model.EventSink
 import com.a2z.nsdl.model.Inspectable
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
+import com.a2z.nsdl.model.ObjectSnapshot
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.sim.Scheduler
 import kotlin.random.Random
@@ -50,6 +51,13 @@ class CreationContext(
  * The objects and relationships created by one [ObjectType.create] call.
  * [power] and [cable] are populated only for object kinds that have them. Configuration replaces
  * the complete object through [ObjectType.create], so volatile state cannot leak between versions.
+ *
+ * [configView] names each schema property this type declares whose live value lives on some
+ * component other than [root] itself (e.g. a device's single interface owns "mac"; a gateway's
+ * DHCP server owns "poolStart"), together with a getter that reads it from wherever that
+ * actually is. [snapshot] merges these into [root]'s own state under those same names, so
+ * inspect() always reflects exactly what create()/configure() accept -- there is no separate,
+ * hand-maintained copy of a property's value to drift out of sync with the schema.
  */
 data class SimObject(
     val root: Inspectable,
@@ -57,7 +65,13 @@ data class SimObject(
     val power: PowerControl? = null,
     val endpoints: List<LinkEndpoint> = emptyList(),
     val cable: Cable? = null,
-)
+    val configView: Map<String, () -> Any?> = emptyMap(),
+) {
+    fun snapshot(): ObjectSnapshot {
+        val base = root.snapshot()
+        return if (configView.isEmpty()) base else base.copy(state = base.state + configView.mapValues { it.value() })
+    }
+}
 
 /**
  * A registrable kind of simulation object. [create] assumes [props] is already validated and

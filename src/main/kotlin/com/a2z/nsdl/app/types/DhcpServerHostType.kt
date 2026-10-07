@@ -67,6 +67,14 @@ object DhcpServerHostType : ObjectType {
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
+            configView = mapOf(
+                "address" to { address.toString() },
+                "subnetMask" to { subnetMask.toString() },
+                "poolStart" to { pool.start.toString() },
+                "poolEnd" to { pool.end.toString() },
+                "leaseSeconds" to { pool.leaseSeconds },
+                "router" to { pool.router?.toString() },
+            ),
         )
     }
 }

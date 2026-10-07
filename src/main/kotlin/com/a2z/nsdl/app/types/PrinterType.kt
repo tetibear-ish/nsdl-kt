@@ -45,6 +45,7 @@ object PrinterType : ObjectType {
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
+            configView = mapOf("mac" to { mac.toString() }),
         )
     }
 }

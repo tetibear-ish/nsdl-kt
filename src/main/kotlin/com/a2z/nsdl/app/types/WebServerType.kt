@@ -52,6 +52,7 @@ object WebServerType : ObjectType {
             components = device.interfaces + device.services,
             power = device,
             endpoints = device.interfaces,
+            configView = mapOf("mac" to { eth0.hardwareAddress.toString() }),
         )
     }
 }

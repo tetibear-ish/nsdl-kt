@@ -59,6 +59,7 @@ object ComputerType : ObjectType {
             components = device.interfaces + device.services + os.applications,
             power = device,
             endpoints = device.interfaces,
+            configView = mapOf("mac" to { eth0.hardwareAddress.toString() }),
         )
     }
 }
