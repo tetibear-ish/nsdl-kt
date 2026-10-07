@@ -28,7 +28,7 @@ object WebServerType : ObjectType {
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 2000L, mutable = true, description = "Boot duration in milliseconds"),
-            PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("mac", PropertyType.MAC, required = false, mutable = false, description = "Ethernet MAC address; auto-generated if omitted"),
             PropertySpec("title", PropertyType.STRING, required = false, default = "Intranet", mutable = true, description = "Title of the home page"),
             PropertySpec("homeText", PropertyType.STRING, required = false, default = "Welcome! This page was served over the simulated network.", mutable = true, description = "Body text of the home page"),
         ),

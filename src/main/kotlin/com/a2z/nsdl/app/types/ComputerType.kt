@@ -34,7 +34,7 @@ object ComputerType : ObjectType {
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
-            PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("mac", PropertyType.MAC, required = false, mutable = false, description = "Ethernet MAC address; auto-generated if omitted"),
         ),
         interfaces = listOf(InterfaceSpec("eth0", MediaType.TWISTED_PAIR)),
     )

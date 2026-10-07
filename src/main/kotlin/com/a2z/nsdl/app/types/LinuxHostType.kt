@@ -23,7 +23,7 @@ object LinuxHostType : ObjectType {
         kind = ObjectKind.DEVICE,
         properties = listOf(
             PropertySpec("bootMs", PropertyType.LONG, required = false, default = 3000L, mutable = true, description = "Boot duration in milliseconds"),
-            PropertySpec("mac", PropertyType.MAC, required = false, mutable = true, description = "Ethernet MAC address; auto-generated if omitted"),
+            PropertySpec("mac", PropertyType.MAC, required = false, mutable = false, description = "Ethernet MAC address; auto-generated if omitted"),
             PropertySpec("username", PropertyType.STRING, required = false, default = "student", mutable = true, description = "SSH account username"),
             PropertySpec("password", PropertyType.STRING, required = false, default = "hunter2", mutable = true, description = "SSH account password"),
         ),

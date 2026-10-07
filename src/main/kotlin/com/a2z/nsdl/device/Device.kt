@@ -55,11 +55,15 @@ class Device(
 
     override fun snapshot() = ObjectSnapshot(
         id, type, ObjectKind.DEVICE,
+        // Single-interface devices (printer, computer, ...) declare a "mac" property so it can
+        // be set at creation; surface the interface's own assigned value here too, under that
+        // same name, so inspect() reflects what create()/configure() actually accept. Multi-
+        // interface devices don't declare that property, so there's no single key to roll up to.
         state = mapOf(
             "power" to lifecycle.state.name,
             "bootMs" to bootDuration().inWholeMilliseconds,
             "generation" to lifecycle.generation,
-        ),
+        ) + interfaces.singleOrNull()?.let { mapOf("mac" to it.mac.toString()) }.orEmpty(),
         relations = mapOf(
             "interfaces" to interfaces.map { it.id },
             "services" to services.map { it.id },

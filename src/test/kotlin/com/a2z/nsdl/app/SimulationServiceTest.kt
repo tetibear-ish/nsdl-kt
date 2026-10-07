@@ -294,7 +294,7 @@ class SimulationServiceTest {
         ok(service.handle(Command.PowerOn("printer1")))
         scheduler.advanceBy(3.seconds)
 
-        val error = rejected(service.handle(Command.Configure("printer1", mapOf("bootMs" to "bad", "mac" to "02:00:00:00:00:09"))))
+        val error = rejected(service.handle(Command.Configure("printer1", mapOf("bootMs" to "bad"))))
         assertEquals(ErrorCode.INVALID_PROPERTY, error.code)
         assertEquals("ON", snapshot("printer1").state["power"])
         assertEquals(3000L, snapshot("printer1").state["bootMs"])
