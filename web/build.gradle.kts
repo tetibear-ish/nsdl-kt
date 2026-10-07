@@ -30,6 +30,7 @@ kotlin {
                 "../src/main/kotlin/com/a2z/nsdl/print",
                 "../src/main/kotlin/com/a2z/nsdl/ssh",
                 "../src/main/kotlin/com/a2z/nsdl/dns",
+                "../src/main/kotlin/com/a2z/nsdl/icmp",
                 "../src/main/kotlin/com/a2z/nsdl/http",
                 "../src/main/kotlin/com/a2z/nsdl/software",
                 "../src/main/kotlin/com/a2z/nsdl/platform",

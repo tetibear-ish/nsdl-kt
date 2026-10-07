@@ -7,5 +7,11 @@ object ScenarioCatalog {
     val all: Map<String, () -> Scenario> = mapOf(
         "print-job" to ::printJobScenario,
         "ssh-session" to ::sshSessionScenario,
+        "arp-first-contact" to ::arpFirstContactScenario,
+        "arp-cache" to ::arpCacheScenario,
+        "arp-forget" to ::arpForgetScenario,
+        "arp-unanswered" to ::arpUnansweredScenario,
+        "arp-via-router" to ::arpViaRouterScenario,
+        "print-by-name" to ::printByNameScenario,
     )
 }

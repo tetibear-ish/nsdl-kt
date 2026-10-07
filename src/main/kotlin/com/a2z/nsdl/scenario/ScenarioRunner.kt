@@ -9,6 +9,8 @@ import com.a2z.nsdl.events.EventRecord
 import com.a2z.nsdl.events.SubscribeResult
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.ObjectSnapshot
+import com.a2z.nsdl.net.ArpOperation
+import com.a2z.nsdl.net.ArpPacket
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.net.UdpDatagram
@@ -161,6 +163,8 @@ class ScenarioRunner(private val runtime: SimulationRuntime) {
         is SnapshotListContains -> listOf(assertion.id)
         is PacketReaches -> emptyList()
         is EventOccurs -> listOfNotNull(assertion.source)
+        is ArpRequestsSent -> listOfNotNull(assertion.endpoint, assertion.target)
+        is ArpResolved -> listOf(assertion.endpoint, assertion.neighbor)
     }
 
     private fun evaluate(assertion: Assertion, events: List<EventRecord>, bound: Duration): AssertionOutcome = when (assertion) {
@@ -171,6 +175,35 @@ class ScenarioRunner(private val runtime: SimulationRuntime) {
         is SnapshotField -> evaluateSnapshotField(assertion)
         is SnapshotListContains -> evaluateSnapshotListContains(assertion)
         is EventOccurs -> evaluateEventOccurs(assertion, events, bound)
+        is ArpRequestsSent -> evaluateArpRequestsSent(assertion, events)
+        is ArpResolved -> evaluateArpResolved(assertion)
+    }
+
+    private fun evaluateArpRequestsSent(assertion: ArpRequestsSent, events: List<EventRecord>): AssertionOutcome {
+        val target = assertion.target?.let { id ->
+            addressOf(id) ?: return fail(assertion, "'$id' has no IPv4 address to match requests against")
+        }
+        val requests = events.filter { record ->
+            val arp = (record.payload as? EventPayload.FrameSent)?.frame?.payload as? ArpPacket ?: return@filter false
+            record.source.value == assertion.endpoint && arp.operation == ArpOperation.REQUEST && (target == null || arp.targetIp == target)
+        }
+        val forTarget = if (target != null) " for $target" else ""
+        return if (requests.size == assertion.expected) pass(assertion, "${requests.size} ARP request(s)$forTarget sent", requests.take(EVIDENCE_LIMIT))
+        else fail(assertion, "'${assertion.endpoint}' sent ${requests.size} ARP request(s)$forTarget, expected ${assertion.expected}", requests.take(EVIDENCE_LIMIT))
+    }
+
+    private fun evaluateArpResolved(assertion: ArpResolved): AssertionOutcome {
+        val neighbor = inspect(assertion.neighbor) ?: return fail(assertion, "no such object '${assertion.neighbor}'")
+        val address = addressOf(assertion.neighbor)?.toString() ?: return fail(assertion, "'${assertion.neighbor}' has no IPv4 address")
+        val mac = neighbor.state["mac"]
+        val snapshot = inspect(assertion.endpoint) ?: return fail(assertion, "no such object '${assertion.endpoint}'")
+        val table = snapshot.state["arp"] as? List<*> ?: return fail(assertion, "'${assertion.endpoint}' has no ARP table")
+        val entry = table.firstOrNull { (it as? Map<*, *>)?.get("address") == address } as? Map<*, *>
+        return when {
+            entry == null -> fail(assertion, "'${assertion.endpoint}' has no ARP entry for $address; table: $table")
+            entry["mac"] != mac -> fail(assertion, "'${assertion.endpoint}' maps $address to ${entry["mac"]}, but '${assertion.neighbor}' is $mac")
+            else -> pass(assertion, "'${assertion.endpoint}' knows $address is-at $mac")
+        }
     }
 
     private fun evaluateAddressInPool(assertion: AddressInPool): AssertionOutcome {

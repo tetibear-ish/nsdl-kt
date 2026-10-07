@@ -1,6 +1,8 @@
 package com.a2z.nsdl.ip
 
 import com.a2z.nsdl.link.FramePort
+import com.a2z.nsdl.model.ActionOutcome
+import com.a2z.nsdl.model.Actionable
 import com.a2z.nsdl.model.DropReason
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.EventSink
@@ -8,6 +10,8 @@ import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.net.ArpOperation
 import com.a2z.nsdl.net.ArpPacket
 import com.a2z.nsdl.net.EthernetFrame
+import com.a2z.nsdl.net.IcmpEcho
+import com.a2z.nsdl.net.IcmpType
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.Ipv4Config
 import com.a2z.nsdl.net.Ipv4Packet
@@ -68,6 +72,15 @@ fun interface Ipv4Interceptor {
 }
 
 /**
+ * ICMP echo as seen by a ping client. Answering requests is the stack's own job (every host replies
+ * to a ping addressed to it); this is only for sending requests and hearing replies.
+ */
+interface EchoTransport {
+    fun sendEcho(dst: Ipv4Address, identifier: Int, sequence: Int): Boolean
+    fun onEchoReply(handler: (from: Ipv4Address, echo: IcmpEcho) -> Unit)
+}
+
+/**
  * Minimal per-interface IPv4 host stack: one address, UDP only, no fragmentation. Accepts packets
  * addressed to its address, the limited broadcast, or its subnet broadcast; anything else is handed
  * to [forwarder] when present, or dropped.
@@ -77,17 +90,23 @@ fun interface Ipv4Interceptor {
  * outstanding; there are no timers, so a queue that overflows drops its oldest packet as
  * [DropReason.ARP_UNRESOLVED] and re-sends the request. The stack answers requests for its own
  * address and learns the requester's mapping. The cache and queues are operational state: they are
- * cleared when the link goes down or the configuration changes.
+ * cleared when the link goes down or the configuration changes, or on demand with the interface's
+ * "clearArp" action.
+ *
+ * ICMP: an echo request addressed to this interface's own address is answered with an echo reply;
+ * replies are handed to the [EchoTransport] handler.
  */
 class Ipv4Stack(
     private val port: FramePort,
     private val events: EventSink,
     private val interceptor: Ipv4Interceptor? = null,
     private val forwarder: Ipv4Forwarder? = null,
-) : UdpTransport, IpConfigurable {
+) : UdpTransport, IpConfigurable, EchoTransport {
     private val listeners = mutableMapOf<Int, UdpHandler>()
     private val arpCache = linkedMapOf<Ipv4Address, MacAddress>()
     private val pending = linkedMapOf<Ipv4Address, MutableList<Ipv4Packet>>()
+    private val requestsSent = mutableMapOf<Ipv4Address, Int>()
+    private var echoHandler: ((Ipv4Address, IcmpEcho) -> Unit)? = null
 
     override var config: Ipv4Config? = null
         private set
@@ -106,8 +125,33 @@ class Ipv4Stack(
             mapOf(
                 "ipv4" to config?.toState(),
                 "arp" to arpCache.map { (ip, mac) -> mapOf("address" to ip.toString(), "mac" to mac.toString()) },
+                "arpPending" to pending.map { (hop, queue) ->
+                    mapOf("address" to hop.toString(), "queued" to queue.size, "requests" to (requestsSent[hop] ?: 0))
+                },
             )
         }
+        port.contributeActions(object : Actionable {
+            override fun perform(action: String, params: Map<String, Any?>): ActionOutcome = when (action) {
+                "clearArp" -> clearArp()
+                else -> ActionOutcome(false, "unknown action '$action'; an IPv4 interface supports clearArp")
+            }
+        })
+    }
+
+    /** "arp -d": forgets every resolved neighbor, so the next packet to each must ask again. */
+    private fun clearArp(): ActionOutcome {
+        val forgotten = arpCache.size
+        arpCache.clear()
+        if (forgotten > 0) events.emit(port.id, EventPayload.ProtocolStateChanged(PROTOCOL, "RESOLVED", "CLEARED", "forgot $forgotten neighbor${if (forgotten == 1) "" else "s"}"))
+        return ActionOutcome(true, "forgot $forgotten neighbor${if (forgotten == 1) "" else "s"}", mapOf("forgotten" to forgotten))
+    }
+
+    override fun sendEcho(dst: Ipv4Address, identifier: Int, sequence: Int): Boolean =
+        sendPacket(Ipv4Packet(config?.address ?: Ipv4Address.ANY, dst, IcmpEcho(IcmpType.ECHO_REQUEST, identifier, sequence)))
+
+    override fun onEchoReply(handler: (from: Ipv4Address, echo: IcmpEcho) -> Unit) {
+        check(echoHandler == null) { "echo replies already handled on $interfaceId" }
+        echoHandler = handler
     }
 
     override fun bind(port: Int, handler: UdpHandler) {
@@ -169,8 +213,10 @@ class Ipv4Stack(
         val request = ArpPacket(ArpOperation.REQUEST, port.mac, c.address, MacAddress.ZERO, hop)
         if (!port.send(EthernetFrame(port.mac, MacAddress.BROADCAST, request))) {
             pending -= hop
+            requestsSent -= hop
             return false
         }
+        requestsSent[hop] = (requestsSent[hop] ?: 0) + 1
         return true
     }
 
@@ -179,6 +225,11 @@ class Ipv4Stack(
         val packet = frame.payload as? Ipv4Packet
         if (packet != null && !isForUs(packet.dst) && forwarder != null) {
             forwarder.forward(frame, packet)
+            return
+        }
+        val echo = packet?.payload as? IcmpEcho
+        if (packet != null && echo != null && packet.dst == config?.address) {
+            onEcho(packet, echo)
             return
         }
         val datagram = packet?.payload as? UdpDatagram
@@ -190,6 +241,14 @@ class Ipv4Stack(
         }
         events.emit(port.id, EventPayload.PacketAccepted(packet))
         handler.onDatagram(ReceivedDatagram(frame.src, packet, datagram))
+    }
+
+    private fun onEcho(packet: Ipv4Packet, echo: IcmpEcho) {
+        events.emit(port.id, EventPayload.PacketAccepted(packet))
+        when (echo.type) {
+            IcmpType.ECHO_REQUEST -> sendPacket(Ipv4Packet(packet.dst, packet.src, echo.copy(type = IcmpType.ECHO_REPLY)))
+            IcmpType.ECHO_REPLY -> echoHandler?.invoke(packet.src, echo)
+        }
     }
 
     /** Requests for someone else are ignored silently, as a real host does with broadcast ARP chatter. */
@@ -210,12 +269,14 @@ class Ipv4Stack(
         if (previous != mac) {
             events.emit(port.id, EventPayload.ProtocolStateChanged(PROTOCOL, if (previous == null) "UNRESOLVED" else "STALE", "RESOLVED", "$ip is-at $mac"))
         }
+        requestsSent -= ip
         pending.remove(ip)?.forEach { port.send(EthernetFrame(port.mac, mac, it)) }
     }
 
     private fun clearNeighbors() {
         arpCache.clear()
         pending.clear()
+        requestsSent.clear()
     }
 
     private fun isBroadcast(dst: Ipv4Address): Boolean {

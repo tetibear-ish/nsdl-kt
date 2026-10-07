@@ -134,3 +134,31 @@ Suggested student checks:
 3. Correlate the three `FILE-CHUNK` packets with the file's declared size and chunk count.
 4. Contrast this scenario's `DecisionRecorded` switch-forwarding evidence with the print job
    scenario's -- the same switch logic explains forwarding for either application protocol.
+
+## ARP lesson
+
+Five small scenarios, one per beat of the lesson, each starting from the same office: `gateway1`
+(DHCP and DNS), `switch1`, `computer1` and `printer1`. They ping by IPv4 address, so ARP is the only
+address resolution involved. Two assertions exist for them: `ArpRequestsSent` counts the ARP
+requests an interface broadcast (optionally only those for another endpoint's address), and
+`ArpResolved` checks that one interface's ARP table maps another's address to its MAC. Both read
+addresses when they are evaluated, since DHCP assigns them during the run.
+
+| Scenario | What happens | What it shows |
+|---|---|---|
+| `arp-first-contact` | one ping to the printer | one broadcast request; both sides learn each other, so the printer never has to ask |
+| `arp-cache` | two pings | still one request: the second ping uses the cache |
+| `arp-forget` | ping, `clearArp`, ping | two requests; the printer, which kept its cache, still asks nothing |
+| `arp-unanswered` | ping an address nobody has | the ping waits in `arpPending`, then times out with "no ARP reply from ..." |
+| `arp-via-router` | ping `8.8.8.8` | the computer asks for the gateway's MAC, not the destination's |
+
+Run one with `nsdl scenario run arp-first-contact`; each assertion is worded as the point it makes,
+e.g. "the printer learns the computer's MAC from the request itself".
+
+## Printing by name
+
+`print-by-name` is the software-layer counterpart of the computer-to-printer job: the computer's
+`print-spooler` prints `minutes.txt` on `printer1` by name. The assertions trace the layers beneath
+that one action -- a DNS lookup, an ARP request for the DNS server, then one for the printer -- and
+check that the printer recorded the job as `computer1/job-1` with all 6000 bytes.
+

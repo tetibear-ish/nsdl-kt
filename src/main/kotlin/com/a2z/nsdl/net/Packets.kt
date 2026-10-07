@@ -3,7 +3,7 @@ package com.a2z.nsdl.net
 /*
  * Behavioral message model: immutable typed layers, not wire-compatible byte serialization.
  * Ethernet frame -> IPv4 packet -> UDP datagram -> application payload (e.g. DHCP),
- * or Ethernet frame -> ARP packet.
+ * Ethernet frame -> IPv4 packet -> ICMP echo, or Ethernet frame -> ARP packet.
  */
 
 sealed interface EthernetPayload {
@@ -62,6 +62,14 @@ data class UdpDatagram(val srcPort: Int, val dstPort: Int, val payload: UdpPaylo
     override fun describe() = "UDP $srcPort > $dstPort ${payload.describe()}"
 }
 
+enum class IcmpType { ECHO_REQUEST, ECHO_REPLY }
+
+/** ICMP echo (RFC 792), i.e. ping: a request and its reply share [identifier] and [sequence]. */
+data class IcmpEcho(val type: IcmpType, val identifier: Int, val sequence: Int) : Ipv4Payload {
+    override val protocolNumber get() = 1
+    override fun describe() = "ICMP echo ${if (type == IcmpType.ECHO_REQUEST) "request" else "reply"} id=$identifier seq=$sequence"
+}
+
 /** Opaque payload for tests and future protocols. */
 data class OpaquePayload(val label: String) : UdpPayload {
     override fun describe() = "DATA($label)"
@@ -78,6 +86,10 @@ fun EthernetFrame.decodeEnvelope(): Map<String, Any?> = when (val p = payload) {
         val base = mapOf("protocol" to "IPv4", "sourceIp" to p.src.toString(), "destIp" to p.dst.toString())
         when (val inner = p.payload) {
             is UdpDatagram -> base + mapOf("protocol" to "UDP", "sourcePort" to inner.srcPort, "destPort" to inner.dstPort)
+            is IcmpEcho -> base + mapOf(
+                "protocol" to "ICMP",
+                "icmp" to mapOf("type" to inner.type.name, "identifier" to inner.identifier, "sequence" to inner.sequence),
+            )
         }
     }
     is ArpPacket -> mapOf(

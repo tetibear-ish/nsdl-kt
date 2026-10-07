@@ -74,3 +74,26 @@ data class EventOccurs(
     val source: String? = null,
     override val description: String = "a $type event occurs" + (if (source != null) " for '$source'" else ""),
 ) : Assertion
+
+/**
+ * A lesson assertion: [endpoint] broadcast exactly [expected] ARP requests during the run, counting
+ * only requests for [target]'s address when given (an endpoint id such as "gateway1.eth0", read when
+ * the assertion is evaluated). Distinguishes "asked once, then remembered" from "asked every time".
+ */
+data class ArpRequestsSent(
+    val endpoint: String,
+    val expected: Int,
+    val target: String? = null,
+    override val description: String =
+        "'$endpoint' sends exactly $expected ARP request${if (expected == 1) "" else "s"}" + (if (target != null) " for '$target'" else ""),
+) : Assertion
+
+/**
+ * A lesson assertion: by the end of the run, [endpoint]'s ARP table maps [neighbor]'s IPv4 address to
+ * [neighbor]'s MAC address (both endpoint ids, e.g. "computer1.eth0" and "printer1.eth0").
+ */
+data class ArpResolved(
+    val endpoint: String,
+    val neighbor: String,
+    override val description: String = "'$endpoint' has resolved '$neighbor' in its ARP table",
+) : Assertion

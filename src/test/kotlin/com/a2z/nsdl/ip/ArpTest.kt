@@ -11,17 +11,19 @@ import com.a2z.nsdl.net.ArpOperation
 import com.a2z.nsdl.net.ArpPacket
 import com.a2z.nsdl.net.ConfigSource
 import com.a2z.nsdl.net.EthernetFrame
+import com.a2z.nsdl.net.IcmpEcho
+import com.a2z.nsdl.net.IcmpType
 import com.a2z.nsdl.net.Ipv4Address
 import com.a2z.nsdl.net.Ipv4Config
 import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.net.OpaquePayload
 import com.a2z.nsdl.sim.VirtualScheduler
 import com.a2z.nsdl.testing.RecordingSink
+import kotlin.time.Duration.Companion.milliseconds
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
-import kotlin.time.Duration.Companion.milliseconds
 
 class ArpTest {
     private val scheduler = VirtualScheduler()
@@ -153,5 +155,38 @@ class ArpTest {
 
         nicA.disable()
         assertEquals("the network link is down", stackA.explainUnreachable(peerless))
+    }
+
+    @Test
+    fun `a host answers a ping addressed to it, and the reply reaches the echo handler`() {
+        val replies = mutableListOf<Pair<Ipv4Address, IcmpEcho>>()
+        stackA.onEchoReply { from, echo -> replies += from to echo }
+
+        assertTrue(stackA.sendEcho(addressB, identifier = 7, sequence = 1))
+        scheduler.advanceBy(10.milliseconds)
+
+        assertEquals(listOf(addressB to IcmpEcho(IcmpType.ECHO_REPLY, 7, 1)), replies)
+    }
+
+    @Test
+    fun `packets waiting for an answer are visible in the interface's state`() {
+        val nobody = Ipv4Address.parse("10.0.0.77")
+        stackA.sendUdp(1, nobody, 9000, OpaquePayload("one"))
+        stackA.sendUdp(1, nobody, 9000, OpaquePayload("two"))
+
+        assertEquals(listOf(mapOf("address" to "10.0.0.77", "queued" to 2, "requests" to 1)), nicA.snapshot().state["arpPending"])
+    }
+
+    @Test
+    fun `clearArp through the interface forgets resolved neighbors`() {
+        stackA.sendUdp(1, addressB, 9000, OpaquePayload("first"))
+        scheduler.advanceBy(5.milliseconds)
+
+        val outcome = nicA.perform("clearArp", emptyMap())
+
+        assertTrue(outcome.accepted)
+        assertEquals("forgot 1 neighbor", outcome.detail)
+        assertTrue(stackA.arpTable.isEmpty())
+        assertFalse(EthernetInterface(ObjectId("bare.eth0"), MacAddress.local(50), sink).perform("clearArp", emptyMap()).accepted, "no IP layer, no actions")
     }
 }

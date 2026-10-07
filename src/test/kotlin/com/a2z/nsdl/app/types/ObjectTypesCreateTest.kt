@@ -63,7 +63,7 @@ class ObjectTypesCreateTest {
         assertEquals(1, obj.endpoints.size)
         assertEquals(
             listOf(
-                "ethernet", "dhcp-client", "print-client", "ssh-client", "dns-resolver", "web-client", "operating-system",
+                "ethernet", "dhcp-client", "print-client", "ssh-client", "dns-resolver", "web-client", "ping", "operating-system",
                 "browser", "print-spooler", "terminal",
             ),
             obj.components.map { it.snapshot().type },
@@ -80,7 +80,7 @@ class ObjectTypesCreateTest {
         assertEquals(ObjectId("server1"), obj.root.id)
         assertEquals(PowerState.OFF, obj.power?.powerState)
         assertEquals(1, obj.endpoints.size)
-        assertEquals(listOf("ethernet", "dhcp-client", "ssh-server"), obj.components.map { it.snapshot().type })
+        assertEquals(listOf("ethernet", "dhcp-client", "ping", "ssh-server"), obj.components.map { it.snapshot().type })
     }
 
     @Test

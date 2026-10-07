@@ -68,4 +68,6 @@ interface FramePort {
     /** In-simulation notification of operational link changes (not an external subscription). */
     fun addLinkListener(listener: (Boolean) -> Unit)
     fun contributeState(provider: () -> Map<String, Any?>)
+    /** Lets an upper layer offer scriptable actions through this port's component (e.g. "clearArp"). */
+    fun contributeActions(actions: com.a2z.nsdl.model.Actionable)
 }

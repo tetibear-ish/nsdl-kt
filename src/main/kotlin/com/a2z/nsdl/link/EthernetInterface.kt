@@ -1,5 +1,7 @@
 package com.a2z.nsdl.link
 
+import com.a2z.nsdl.model.ActionOutcome
+import com.a2z.nsdl.model.Actionable
 import com.a2z.nsdl.model.DropReason
 import com.a2z.nsdl.model.EventPayload
 import com.a2z.nsdl.model.EventSink
@@ -22,10 +24,11 @@ class EthernetInterface(
     override val media: MediaType = MediaType.TWISTED_PAIR,
     private val ownerId: ObjectId? = null,
     private val promiscuous: Boolean = false,
-) : LinkEndpoint, FramePort, Inspectable {
+) : LinkEndpoint, FramePort, Inspectable, Actionable {
     private var medium: Medium? = null
     private var upper: FrameHandler? = null
     private var extraState: () -> Map<String, Any?> = { emptyMap() }
+    private var upperActions: Actionable? = null
 
     override var isEnabled = false
         private set
@@ -44,6 +47,12 @@ class EthernetInterface(
 
     /** Lets an upper layer contribute modeled state (e.g. IPv4 configuration) to this interface's snapshot. */
     override fun contributeState(provider: () -> Map<String, Any?>) { extraState = provider }
+
+    override fun contributeActions(actions: Actionable) { upperActions = actions }
+
+    /** An interface has no actions of its own; it offers whatever its upper layer contributed. */
+    override fun perform(action: String, params: Map<String, Any?>): ActionOutcome =
+        upperActions?.perform(action, params) ?: ActionOutcome(false, "'$id' has no IP layer and supports no actions")
 
     fun enable() = setEnabled(true)
     fun disable() = setEnabled(false)

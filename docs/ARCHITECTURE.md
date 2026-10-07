@@ -103,6 +103,17 @@ most 8 packets per next hop, and overflowing it drops the oldest packet as
 router is dropped as `NO_ROUTE`. Callers may still pass an explicit MAC, which
 bypasses resolution. Gratuitous ARP, proxy ARP, and cache aging are deferred.
 
+An interface's inspected state lists its ARP table (`arp`) and the next hops
+it is still waiting on (`arpPending`: address, packets queued, requests sent).
+Invoking `clearArp` on an interface (e.g. `pc1.eth0`) forgets every resolved
+neighbor, like `arp -d`.
+
+Every IPv4 stack answers an ICMP echo request addressed to it. `computer` and
+`linux-host` have a ping client: invoking `ping` on `<id>.ping` with
+`{"address": "192.168.1.101"}` sends one echo request and records a reply with
+its round-trip time, or after 2 seconds a timeout naming the likely cause (e.g.
+`timed out: no ARP reply from 192.168.1.101`). ICMP is not translated by NAT.
+
 ## Network address translation
 
 A `routed-gateway` with `nat=true` and a `wanAddress` masquerades its lan behind

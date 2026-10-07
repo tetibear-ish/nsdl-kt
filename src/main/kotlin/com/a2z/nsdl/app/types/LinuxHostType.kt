@@ -9,6 +9,7 @@ import com.a2z.nsdl.app.PropertyType
 import com.a2z.nsdl.app.SimObject
 import com.a2z.nsdl.device.HostBuilder
 import com.a2z.nsdl.dhcp.DhcpClient
+import com.a2z.nsdl.icmp.PingClient
 import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
@@ -16,7 +17,7 @@ import com.a2z.nsdl.net.MacAddress
 import com.a2z.nsdl.ssh.SshServer
 import kotlin.time.Duration.Companion.milliseconds
 
-/** A single-interface host with DHCP and the server side of the teaching SSH protocol. */
+/** A single-interface host with DHCP, ping, and the server side of the teaching SSH protocol. */
 object LinuxHostType : ObjectType {
     override val schema = ObjectTypeSchema(
         name = "linux-host",
@@ -35,6 +36,7 @@ object LinuxHostType : ObjectType {
         val mac = props["mac"] as? MacAddress ?: ctx.nextMac()
         val eth0 = builder.ethernet("eth0", mac)
         builder.service(DhcpClient(id.child("dhcp-client"), eth0, eth0, ctx.random(id.child("dhcp-client")), ctx.events, hostname = id.value))
+        builder.service(PingClient(id.child("ping"), eth0, eth0, ctx.events))
         builder.service(SshServer(id.child("ssh-server"), eth0, username = props["username"] as String, password = props["password"] as String))
 
         val bootMs = props["bootMs"] as Long

@@ -11,6 +11,7 @@ import com.a2z.nsdl.device.HostBuilder
 import com.a2z.nsdl.dhcp.DhcpClient
 import com.a2z.nsdl.dns.DnsResolver
 import com.a2z.nsdl.http.WebClient
+import com.a2z.nsdl.icmp.PingClient
 import com.a2z.nsdl.link.MediaType
 import com.a2z.nsdl.model.ObjectId
 import com.a2z.nsdl.model.ObjectKind
@@ -23,8 +24,8 @@ import com.a2z.nsdl.ssh.SshClient
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
- * A workstation. Network layer: DHCP (announcing its id as host name), a DNS resolver, and the
- * client side of the teaching web, print and SSH protocols. Software layer: an [OperatingSystem]
+ * A workstation. Network layer: DHCP (announcing its id as host name), a DNS resolver, ping, and
+ * the client side of the teaching web, print and SSH protocols. Software layer: an [OperatingSystem]
  * whose applications ("<id>.browser", "<id>.print-spooler", "<id>.terminal") use those clients only
  * through [ProtocolNetworkServices].
  */
@@ -48,6 +49,7 @@ object ComputerType : ObjectType {
         val ssh = SshClient(id.child("ssh-client"), eth0).also(builder::service)
         val resolver = DnsResolver(id.child("dns-resolver"), eth0, ctx.events).also(builder::service)
         val web = WebClient(id.child("web-client"), eth0).also(builder::service)
+        builder.service(PingClient(id.child("ping"), eth0, eth0, ctx.events))
 
         val os = OperatingSystem(id, ProtocolNetworkServices(id, eth0, resolver, web, print, ssh), ctx.events)
         builder.service(OperatingSystemService(os))

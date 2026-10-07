@@ -36,7 +36,7 @@ class LayerBoundaryTest {
 
     @Test
     fun `network and protocol packages never depend on software or platform`() {
-        val networkPackages = listOf("sim", "model", "net", "link", "ip", "dhcp", "dns", "http", "print", "ssh", "device")
+        val networkPackages = listOf("sim", "model", "net", "link", "ip", "dhcp", "dns", "http", "icmp", "print", "ssh", "device")
         val violations = networkPackages.flatMap { pkg ->
             imports(pkg).flatMap { (file, imports) ->
                 imports.filter { it.startsWith("com.a2z.nsdl.software.") || it.startsWith("com.a2z.nsdl.platform.") }.map { "$file imports $it" }

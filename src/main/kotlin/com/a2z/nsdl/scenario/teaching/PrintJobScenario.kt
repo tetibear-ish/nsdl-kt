@@ -16,8 +16,8 @@ import kotlin.time.Duration.Companion.seconds
 /**
  * The teaching scenario documented in docs/SCENARIOS.md: a computer and a printer, both acquiring
  * addresses from a gateway's DHCP pool through a learning switch, then the computer submitting a
- * chunked print job directly to the printer (no ARP, so the printer's address and MAC are read live
- * from its DHCP-configured interface rather than hard-coded). This is the same exchange
+ * chunked print job directly to the printer, at its DHCP-assigned address read live rather than
+ * hard-coded (its MAC is passed too, though the computer could resolve it with ARP). This is the same exchange
  * [com.a2z.nsdl.print.PrintJobIntegrationTest] drives directly against the protocol classes, expressed
  * instead as data a scenario runner can execute from the CLI, the browser or a test.
  */
