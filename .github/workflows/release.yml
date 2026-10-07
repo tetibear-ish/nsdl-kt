@@ -1,0 +1,60 @@
+name: Release
+
+# Builds a self-contained runtime image (app + bundled JRE, via jlink) for each platform and
+# publishes them as assets on a GitHub Release, so consumers never need a system JDK.
+#
+# Each matrix OS jlinks its own native image; there's no cross-platform jlinking, so every
+# runner just needs its own JDK 21 to build with.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            asset: linux-x64
+          - os: windows-latest
+            asset: windows-x64
+          - os: macos-latest
+            asset: macos-arm64
+          - os: macos-13
+            asset: macos-x64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: gradle
+      - name: Build self-contained runtime image
+        shell: bash
+        run: ./gradlew runtimeZip
+      - name: Rename artifact
+        shell: bash
+        run: |
+          mkdir -p dist
+          cp build/image.zip "dist/nsdl-${{ github.ref_name }}-${{ matrix.asset }}.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: nsdl-${{ matrix.asset }}
+          path: dist/*.zip
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Publish release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release create "${{ github.ref_name }}" dist/*.zip --title "${{ github.ref_name }}" --generate-notes

@@ -1,6 +1,7 @@
 plugins {
     kotlin("jvm") version "2.4.20"
     application
+    id("org.beryx.runtime") version "1.13.1"
 }
 
 repositories {
@@ -31,4 +32,11 @@ tasks.test {
 
 application {
     mainClass = "com.a2z.nsdl.MainKt"
+}
+
+runtime {
+    // java.net.http and jdk.httpserver back the `web` subcommand's HTTP/SSE transport;
+    // everything else the app touches lives in java.base.
+    modules.addAll("java.base", "java.net.http", "jdk.httpserver")
+    options.addAll("--strip-debug", "--no-header-files", "--no-man-pages", "--compress=2")
 }
